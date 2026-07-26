@@ -1,3 +1,5 @@
-aiogram
-apscheduler
-tzdata
+aiogram==3.15.0
+apscheduler==3.10.4
+aiohttp==3.10.10
+tzdata==2024.2
+pytz==2024.2
