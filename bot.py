@@ -1,361 +1,305 @@
 import os
-import datetime
-import logging
 import asyncio
-from zoneinfo import ZoneInfo
+import sqlite3
+from datetime import datetime
 from aiohttp import web
-
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
+from aiogram.types import (
+    InlineKeyboardMarkup, 
+    InlineKeyboardButton, 
+    BotCommand, 
+    BotCommandScopeAllGroupChats, 
+    BotCommandScopeAllPrivateChats
+)
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import (
-    InlineKeyboardMarkup, InlineKeyboardButton, BotCommand,
-    BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
-)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import pytz
 
-logging.basicConfig(level=logging.INFO)
+# ==========================================
+# 1. SOZLAMALAR VA ENVIRONMENT VARIABLE'LAR
+# ==========================================
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN")
+GROUP_CHAT_ID = int(os.environ.get("GROUP_CHAT_ID", "-1002234057863"))
+ISHGA_KELISH_THREAD_ID = int(os.environ.get("ISHGA_KELISH_THREAD_ID", "1"))
+JARIMALAR_THREAD_ID = int(os.environ.get("JARIMALAR_THREAD_ID", "55"))
 
-# ==========================================================
-# 🕒 VAQT ZONASI — O'zbekiston vaqti (Asia/Tashkent)
-# ==========================================================
-TZ = ZoneInfo("Asia/Tashkent")
+# Rahbarlar Telegram ID lar ro'yxati (So'rovlar va tasdiqlash uchun)
+BOSS_IDS = [
+    int(x.strip()) for x in os.environ.get("BOSS_IDS", "108819011,108819012").split(",") if x.strip()
+]
 
-def now_tz() -> datetime.datetime:
-    return datetime.datetime.now(TZ)
+# Toshkent vaqt zonasi
+TASHKENT_TZ = pytz.timezone("Asia/Tashkent")
 
-# ==========================================================
-# 🔑 SOZLAMALAR
-# ==========================================================
-BOT_TOKEN = "8707986524:AAF0tby_NWvgLCxBIkofyHL3nE-Tce-EELE"
-GROUP_CHAT_ID = -1003993511736
-JARIMALAR_THREAD_ID = 55      # "Jarimalar" mavzusi ID si
-ISHGA_KELISH_THREAD_ID = 1   # "Ishga kelish vidyosi" mavzusi ID si
-
-# 🤖 BOTNI ISHGA TUSHIRISH (Render uchun proksisiz)
-bot = Bot(token=BOT_TOKEN)
-
-# 👑 RAHBARLAR
-BOSS_USERNAMES = {"abduvali94", "abdullayev_12_00"}
-
-# 👥 XODIMLAR VA ULARNING GRAFIKLARI
+# ==========================================
+# 2. XODIMLAR VA BAZA MANBALARI
+# ==========================================
 EMPLOYEES = {
-    "abdullayev_12_00": {
-        "name": "Ma'murxon",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "21:00",
-        "rates": [(10, 30000), (30, 50000), (60, 70000), (120, 100000), (270, 150000)],
-        "absent": 150000,
-    },
-    "ganiboyev_ozodbek": {
-        "name": "Ozodbek",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "21:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
-    "wsev7": {
-        "name": "Gulzoda",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "19:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
-    "muradjanvna_m": {
-        "name": "Moxinur",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "19:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
-    "ustazoda0125": {
-        "name": "Asadbek",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "18:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
-    "muhammadsodiq": {
-        "name": "Muhammadsodiq",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "21:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 100000,
-    }
+    "sohibjon": {"name": "Sohibjon Ustaboyev", "per_min": 1000, "absent": 50000},
+    "ilhomjon": {"name": "Ilhomjon", "per_min": 1000, "absent": 50000},
+    "hojiakbar": {"name": "Hojiakbar", "per_min": 1000, "absent": 50000},
+    "shohruh": {"name": "Shohruh", "per_min": 1000, "absent": 50000},
+    "mirzoolim": {"name": "Mirzoolim", "per_min": 1000, "absent": 50000},
+    "muhammadali": {"name": "Muhammadali", "per_min": 1000, "absent": 50000},
+    "murodjon": {"name": "Murodjon", "per_min": 1000, "absent": 50000},
 }
 
-DEFAULT_FINE = {
-    "name": "Xodim",
-    "work_start": (8, 0),
-    "work_end": (12, 30),
-    "leave_time": "18:00",
-    "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-    "absent": 120000,
-}
+DB_PATH = "attendance.db"
 
-today_records = {}
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS attendance (
+            emp_key TEXT PRIMARY KEY,
+            status TEXT,
+            time_str TEXT,
+            late_minutes INTEGER,
+            fine INTEGER,
+            boss_name TEXT,
+            until_time TEXT,
+            reason TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS requests (
+            req_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            req_type TEXT,
+            emp_key TEXT,
+            emp_name TEXT,
+            username TEXT,
+            reason TEXT,
+            until_time TEXT,
+            status TEXT DEFAULT 'pending'
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-class ExcuseState(StatesGroup):
-    waiting_for_reason = State()
+init_db()
 
-class LateState(StatesGroup):
-    waiting_for_time = State()
-    waiting_for_reason = State()
+def db_get_records():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT emp_key, status, time_str, late_minutes, fine, boss_name, until_time, reason FROM attendance")
+    rows = cur.fetchall()
+    conn.close()
+    records = {}
+    for r in rows:
+        records[r[0]] = {
+            "status": r[1],
+            "time": r[2],
+            "late": r[3],
+            "fine": r[4],
+            "boss": r[5],
+            "until_time": r[6],
+            "reason": r[7]
+        }
+    return records
 
+def db_set_record(emp_key, record):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT OR REPLACE INTO attendance (emp_key, status, time_str, late_minutes, fine, boss_name, until_time, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        emp_key,
+        record.get("status"),
+        record.get("time"),
+        record.get("late", 0),
+        record.get("fine", 0),
+        record.get("boss"),
+        record.get("until_time"),
+        record.get("reason")
+    ))
+    conn.commit()
+    conn.close()
+
+def db_clear_today():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM attendance")
+    conn.commit()
+    conn.close()
+
+# ==========================================
+# 3. AIOGRAM INITIALIZATION & FSM
+# ==========================================
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
-scheduler = AsyncIOScheduler(timezone=TZ)
+scheduler = AsyncIOScheduler(timezone=TASHKENT_TZ)
 
-def get_employee(username: str | None, first_name: str = "") -> tuple[str, dict]:
-    if username and username.lower() in EMPLOYEES:
-        return username.lower(), EMPLOYEES[username.lower()]
-    for key, data in EMPLOYEES.items():
-        if data["name"].lower() in first_name.lower():
-            return key, data
-    return username or first_name, DEFAULT_FINE
+class Form(StatesGroup):
+    waiting_sabab = State()
+    waiting_kech_time = State()
+    waiting_kech_reason = State()
 
-def calculate_fine(employee: dict, minutes_late: int) -> int:
-    rules = employee["rates"]
-    for limit, price in rules:
-        if minutes_late <= limit:
-            return price
-    return rules[-1][1]
+# ==========================================
+# 4. YUZAGA KELADIGAN BUYRUKLAR VA BOT
+# ==========================================
 
-# /id
-@dp.message(Command("id"))
-async def cmd_id(message: types.Message):
-    user = message.from_user
-    thread_info = f"🧵 **Mavzu ID:** `{message.message_thread_id}`\n" if message.message_thread_id else ""
-    await message.answer(
-        f"🆔 **Sizning ID:** `{user.id}`\n"
-        f"👤 **Ism:** {user.full_name}\n"
-        f"🔗 **Username:** @{user.username or 'yoq'}\n"
-        f"💬 **Chat ID:** `{message.chat.id}`\n"
-        f"{thread_info}",
-        parse_mode="Markdown"
-    )
-
-# /start
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer(
-        "Assalomu alaykum! 'Ziynat' do'koni nazorat botiga xush kelibsiz.\n\n"
-        "Buyruqlarni ko'rish uchun yozish joyida `/` belgisini bosing.",
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✍️ Kelolmaslik iltimosnomasi", callback_link="sabab_start")],
+        [InlineKeyboardButton(text="⏰ Kechikish so'rovi", callback_data="kech_start")],
+        [InlineKeyboardButton(text="🆔 Mening Telegram ID m", callback_data="my_id")]
+    ])
+    await message.reply(
+        "👋 **Ziynat Nazorat Botiga xush kelibsiz!**\n\n"
+        "Ushbu bot orqali ishga kelish videolari, kechikish va uzr so'rovlarini yuborishingiz mumkin.",
+        reply_markup=markup,
         parse_mode="Markdown"
     )
 
-# /ketish
-@dp.message(Command("ketish"))
-async def handle_ketish(message: types.Message):
-    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    name = message.from_user.first_name or emp["name"]
-    now_time = now_tz().strftime("%H:%M")
-    await message.answer(
-        f"🚪 **{name}** ishxonadan chiqib ketdi.\n"
-        f"⏰ **Chiqish vaqti:** {now_time}\n"
-        f"📌 *Belgilangan ketish vaqti: {emp['leave_time']}*",
-        parse_mode="Markdown"
-    )
+@dp.callback_query(F.data == "my_id")
+async def cb_my_id(callback: types.CallbackQuery):
+    await callback.answer(f"Sizning Telegram ID ingiz: {callback.from_user.id}", show_alert=True)
 
-# /qaytib_keldim
-@dp.message(Command("qaytib_keldim"))
-async def handle_qaytib_keldim(message: types.Message):
-    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    name = message.from_user.first_name or emp["name"]
-    now_time = now_tz().strftime("%H:%M")
-    await message.answer(
-        f"🔄 **{name}** ishxonaga qaytib keldi.\n"
-        f"⏰ **Qaytish vaqti:** {now_time}",
-        parse_mode="Markdown"
-    )
-
-# 📹 VIDEO NOTE / VIDEO
-@dp.message(F.video | F.video_note)
-async def handle_video(message: types.Message):
-    username = message.from_user.username
-    first_name = message.from_user.first_name or ""
-    emp_key, emp = get_employee(username, first_name)
-    user_name = first_name or emp["name"]
-    
-    now = now_tz()
-    work_start = now.replace(hour=8, minute=0, second=0, microsecond=0)
-    work_end = now.replace(hour=12, minute=30, second=0, microsecond=0)
-
-    if now > work_end:
-        await message.answer(f"⛔ **{user_name}**, soat 12:30 dan o'tdi. Video qabul qilish to'xtatilgan!", parse_mode="Markdown")
-        return
-
-    time_str = now.strftime("%H:%M")
-
-    # Agar kechikishga ruxsat olgan bo'lsa:
-    if emp_key in today_records and today_records[emp_key].get("status") == "late_approved":
-        allowed_until = today_records[emp_key].get("until_time", "12:30")
-        h, m = map(int, allowed_until.split(":"))
-        allowed_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        
-        if now <= allowed_dt:
-            today_records[emp_key] = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time_approved"}
-            await message.answer(
-                f"✅ Baraka toping, **{user_name}**!\n"
-                f"Ruxsat berilgan vaqtda ({time_str} da) keldingiz. Jarima qo'llanilmaydi.",
-                parse_mode="Markdown"
-            )
-            return
-
-    if now <= work_start:
-        today_records[emp_key] = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time"}
-        await message.answer(f"✅ Baraka toping, **{user_name}**!\nIshga o'z vaqtida keldingiz. (Vaqt: {time_str})", parse_mode="Markdown")
-        return
-
-    late_minutes = int((now - work_start).total_seconds() / 60)
-    fine_sum = calculate_fine(emp, late_minutes)
-    
-    today_records[emp_key] = {"name": user_name, "time": time_str, "late": late_minutes, "fine": fine_sum, "status": "late"}
-    
-    await message.answer(
-        f"⚠️ **{user_name}**, siz bugun {late_minutes} daqiqa kechikdingiz. (Kelgan vaqtingiz: {time_str})\n"
-        f"💸 **Jarima miqdori:** {fine_sum:,} so'm.",
-        parse_mode="Markdown"
-    )
-
-# ✍️ /sabab — ISHGA KELOLMASLIK ILTIMOSNOMASI
+# ------------------------------------------
+# A) SABABLI KELOLMASLIK SO'ROVI (FSM)
+# ------------------------------------------
 @dp.message(Command("sabab"))
-async def start_excuse(message: types.Message, state: FSMContext):
-    warning_text = (
-        "⚠️ **DIQQAT! SABABLI ISHGA KELOLMASLIK BO'YICHA ILTIMOSNOMA**\n\n"
-        "Iltimos, ishga kelolmasligingiz sababini **juda jiddiy yondashib, to'liq va tushunarli** holatda yozing.\n\n"
-        "❗️ *Yuzaki yoki sababsiz yozilgan iltimosnomalar rahbariyat (Abduvali / Ma'murxon) tomonidan rad etiladi va belgilangan jarima kuchida qoladi.*\n\n"
-        "✍️ **Sababingizni ushbu mavzuga yozib yuboring:**"
+@dp.callback_query(F.data == "sabab_start")
+async def cmd_sabab(event: types.Message | types.CallbackQuery, state: FSMContext):
+    msg = event.message if isinstance(event, types.CallbackQuery) else event
+    await state.set_state(Form.waiting_sabab)
+    await msg.reply("✍️ **Bugun ishga kelolmasligingiz sababini batafsil yozib yuboring:**", parse_mode="Markdown")
+
+@dp.message(Form.waiting_sabab)
+async def process_sabab(message: types.Message, state: FSMContext):
+    reason = message.text
+    await state.clear()
+    
+    username = (message.from_user.username or "username_yoq").lower()
+    emp_name = message.from_user.full_name
+    emp_key = username if username in EMPLOYEES else "unknown"
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO requests (req_type, emp_key, emp_name, username, reason)
+        VALUES (?, ?, ?, ?, ?)
+    """, ("sabab", emp_key, emp_name, username, reason))
+    req_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Tasdiqlash (Ruxsat)", callback_data=f"req_sabab_a_{req_id}"),
+            InlineKeyboardButton(text="❌ Rad etish", callback_data=f"req_sabab_r_{req_id}")
+        ]
+    ])
+
+    boss_card = (
+        f"📩 **SABABLI ISHGA KELOLMASLIK ILTIMOSNOMASI**\n\n"
+        f"👤 **Xodim:** {emp_name} (@{username})\n"
+        f"📝 **Sababi:** {reason}\n\n"
+        f"👇 *Ushbu so'rov bo'yicha qaroringizni tanlang:*"
     )
-    warning_msg = await message.answer(warning_text, parse_mode="Markdown")
-    await state.update_data(warning_msg_id=warning_msg.message_id, warning_chat_id=warning_msg.chat.id)
-    await state.set_state(ExcuseState.waiting_for_reason)
 
-@dp.message(ExcuseState.waiting_for_reason)
-async def send_excuse_to_group(message: types.Message, state: FSMContext):
-    user_name = message.from_user.first_name or "Xodim"
-    username = message.from_user.username or ""
-    reason_text = message.text
-
-    state_data = await state.get_data()
-    if state_data.get("warning_msg_id"):
+    # Barcha rahbarlarga xabar yuborish
+    for boss_id in BOSS_IDS:
         try:
-            await bot.delete_message(chat_id=state_data["warning_chat_id"], message_id=state_data["warning_msg_id"])
+            await bot.send_message(boss_id, boss_card, reply_markup=markup, parse_mode="Markdown")
         except Exception:
             pass
 
-    approve_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Roziman", callback_data=f"sabab_app_{username}_{user_name}"),
-            InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"sabab_rej_{username}_{user_name}")
-        ]
-    ])
-    
-    group_msg = (
-        f"📩 **YANGI ILTIMOSNOMA (Sababli kelolmaslik)**\n\n"
-        f"👤 **Xodim:** {user_name} (@{username})\n"
-        f"📝 **Sababi:** {reason_text}\n\n"
-        f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
-    )
-    await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="Markdown")
-    await state.set_state(None)
+    await message.reply("✅ **Iltimosnomangiz rahbarlarga ko'rib chiqish uchun yuborildi.**", parse_mode="Markdown")
 
-# ⏰ /kech_qolish — KECHIKISHGA RUXSAT SO'RASH
-time_picker_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="08:30", callback_data="time_08:30"), InlineKeyboardButton(text="09:00", callback_data="time_09:00"), InlineKeyboardButton(text="09:30", callback_data="time_09:30")],
-    [InlineKeyboardButton(text="10:00", callback_data="time_10:00"), InlineKeyboardButton(text="10:30", callback_data="time_10:30"), InlineKeyboardButton(text="11:00", callback_data="time_11:00")],
-    [InlineKeyboardButton(text="11:30", callback_data="time_11:30"), InlineKeyboardButton(text="12:00", callback_data="time_12:00")]
-])
-
+# ------------------------------------------
+# B) KECHIKISH SO'ROVI (FSM)
+# ------------------------------------------
 @dp.message(Command("kech_qolish"))
-async def start_late_request(message: types.Message, state: FSMContext):
-    msg = await message.answer(
-        "⏰ **KECHIKISHGA RUXSAT SO'RASH**\n\n"
-        "Iltimos, bugun soat **nechagacha kechikishingizni** pastdagi tugmalar orqali tanlang:",
-        reply_markup=time_picker_keyboard,
-        parse_mode="Markdown"
-    )
-    await state.update_data(warning_msg_id=msg.message_id, warning_chat_id=msg.chat.id)
+@dp.callback_query(F.data == "kech_start")
+async def cmd_kechikish(event: types.Message | types.CallbackQuery, state: FSMContext):
+    msg = event.message if isinstance(event, types.CallbackQuery) else event
+    await state.set_state(Form.waiting_kech_time)
+    await msg.reply("⏰ **Soat nechagacha kechikishingizni kiriting (Masalan: 09:30 yoki 10:00):**", parse_mode="Markdown")
 
-@dp.callback_query(F.data.startswith("time_"))
-async def handle_time_selection(callback: types.CallbackQuery, state: FSMContext):
-    selected_time = callback.data.split("_")[1]
-    await state.update_data(selected_time=selected_time)
-    
-    await callback.message.edit_text(
-        f"⏰ Belgilangan vaqt: **{selected_time}**\n\n"
-        f"✍️ Endi kechikishingiz **sababini batafsil va jiddiy** yozib yuboring:",
-        parse_mode="Markdown"
-    )
-    await state.set_state(LateState.waiting_for_reason)
-    await callback.answer()
+@dp.message(Form.waiting_kech_time)
+async def process_kech_time(message: types.Message, state: FSMContext):
+    await state.update_data(until_time=message.text)
+    await state.set_state(Form.waiting_kech_reason)
+    await msg_reply = message.reply("📝 **Kechikishingiz sababini yozing:**", parse_mode="Markdown")
 
-@dp.message(LateState.waiting_for_reason)
-async def send_late_request_to_group(message: types.Message, state: FSMContext):
-    user_name = message.from_user.first_name or "Xodim"
-    username = message.from_user.username or ""
-    reason_text = message.text
-    
+@dp.message(Form.waiting_kech_reason)
+async def process_kech_reason(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    selected_time = data.get("selected_time", "10:00")
-
-    if data.get("warning_msg_id"):
-        try:
-            await bot.delete_message(chat_id=data["warning_chat_id"], message_id=data["warning_msg_id"])
-        except Exception:
-            pass
-
-    approve_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Roziman", callback_data=f"late_app_{username}_{user_name}_{selected_time}"),
-            InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"late_rej_{username}_{user_name}_{selected_time}")
-        ]
-    ])
-    
-    group_msg = (
-        f"⏰ **YANGI ILTIMOSNOMA (Kech qolishga ruxsat)**\n\n"
-        f"👤 **Xodim:** {user_name} (@{username})\n"
-        f"🕒 **Kutilayotgan kelish vaqti:** {selected_time} gacha\n"
-        f"📝 **Sababi:** {reason_text}\n\n"
-        f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
-    )
-    
-    await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="Markdown")
+    until_time = data.get("until_time", "09:30")
+    reason = message.text
     await state.clear()
 
-# 👑 RAHBARLAR QARORLARI
-@dp.callback_query(F.data.startswith("sabab_") | F.data.startswith("late_"))
-async def handle_boss_decisions(callback: types.CallbackQuery):
-    clicker_username = (callback.from_user.username or "").lower()
-    
-    if clicker_username not in BOSS_USERNAMES:
-        await callback.answer("❌ Sizda bu qarorni qabul qilish huquqi yo'q! Qarorni faqat Abduvali yoki Ma'murxon beradi.", show_alert=True)
+    username = (message.from_user.username or "username_yoq").lower()
+    emp_name = message.from_user.full_name
+    emp_key = username if username in EMPLOYEES else "unknown"
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO requests (req_type, emp_key, emp_name, username, reason, until_time)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, ("late", emp_key, emp_name, username, reason, until_time))
+    req_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Ruxsat berish", callback_data=f"req_late_a_{req_id}"),
+            InlineKeyboardButton(text="❌ Rad etish", callback_data=f"req_late_r_{req_id}")
+        ]
+    ])
+
+    boss_card = (
+        f"⏰ **KECHIKISHGA RUXSAT SO'ROVI**\n\n"
+        f"👤 **Xodim:** {emp_name} (@{username})\n"
+        f"🕒 **Kelish vaqti:** {until_time} gacha\n"
+        f"📝 **Sababi:** {reason}\n\n"
+        f"👇 *Qaroringizni tanlang:*"
+    )
+
+    for boss_id in BOSS_IDS:
+        try:
+            await bot.send_message(boss_id, boss_card, reply_markup=markup, parse_mode="Markdown")
+        except Exception:
+            pass
+
+    await message.reply("✅ **Kechikish so'rovingiz rahbarlarga yuborildi.**", parse_mode="Markdown")
+
+# ------------------------------------------
+# C) RAHBAR TUGMALARI ISHLOVCHI (CALLBACK)
+# ------------------------------------------
+@dp.callback_query(F.data.startswith("req_"))
+async def handle_request_callback(callback: types.CallbackQuery):
+    parts = callback.data.split("_")
+    category = parts[1]   # sabab / late
+    action = parts[2]     # a (approve) / r (reject)
+    req_id = int(parts[3])
+
+    boss_name = callback.from_user.first_name or "Rahbar"
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT req_type, emp_key, emp_name, username, reason, until_time FROM requests WHERE req_id=?", (req_id,))
+    row = cur.fetchone()
+
+    if not row:
+        await callback.answer("⚠️ So'rov topilmadi yoki ko'rib chiqilgan.", show_alert=True)
+        conn.close()
         return
 
-    data_parts = callback.data.split("_")
-    category = data_parts[0]
-    action = data_parts[1]
-    emp_username = data_parts[2]
-    emp_name = data_parts[3]
-    boss_name = callback.from_user.first_name
-
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
-
-    emp_key = emp_username.lower() if emp_username else emp_name
+    req_type, emp_key, emp_name, emp_username, reason, until_time = row
 
     if category == "sabab":
-        if action == "app":
-            today_records[emp_key] = {"name": emp_name, "status": "excused_approved", "boss": boss_name}
+        if action == "a":
+            rec = {"name": emp_name, "status": "excused_approved", "boss": boss_name, "reason": reason}
+            db_set_record(emp_key, rec)
             public_msg = (
                 f"✅ **SABABLI ISHGA KELOLMASLIK (RUXSAT BERILDI)**\n\n"
                 f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
@@ -364,7 +308,8 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
             )
             await callback.answer("✅ Iltimosnoma tasdiqlandi.", show_alert=True)
         else:
-            today_records[emp_key] = {"name": emp_name, "status": "excused_rejected", "boss": boss_name}
+            rec = {"name": emp_name, "status": "excused_rejected", "boss": boss_name, "reason": reason}
+            db_set_record(emp_key, rec)
             public_msg = (
                 f"❌ **SABABLI ISHGA KELOLMASLIK (RAD ETILDI)**\n\n"
                 f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
@@ -374,27 +319,38 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
             await callback.answer("❌ Iltimosnoma rad etildi.", show_alert=True)
 
     elif category == "late":
-        selected_time = data_parts[4]
-        if action == "app":
-            today_records[emp_key] = {"name": emp_name, "status": "late_approved", "until_time": selected_time, "boss": boss_name}
+        if action == "a":
+            rec = {"name": emp_name, "status": "late_approved", "until_time": until_time, "boss": boss_name, "reason": reason}
+            db_set_record(emp_key, rec)
             public_msg = (
                 f"✅ **KECHIKISHGA RUXSAT BERILDI**\n\n"
                 f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"⏰ **Ruxsat berilgan vaqt:** Soat {selected_time} gacha\n"
+                f"⏰ **Ruxsat berilgan vaqt:** Soat {until_time} gacha\n"
                 f"👑 **Qaror beruvchi:** {boss_name}\n"
-                f"📌 **Natija:** *{selected_time} gacha kelib video tashlasa jarima yozilmaydi.*"
+                f"📌 **Natija:** *{until_time} gacha kelib video tashlasa jarima yozilmaydi.*"
             )
-            await callback.answer(f"✅ {selected_time} gacha ruxsat berildi.", show_alert=True)
+            await callback.answer(f"✅ {until_time} gacha ruxsat berildi.", show_alert=True)
         else:
-            today_records[emp_key] = {"name": emp_name, "status": "late_rejected", "until_time": selected_time, "boss": boss_name}
+            rec = {"name": emp_name, "status": "late_rejected", "until_time": until_time, "boss": boss_name, "reason": reason}
+            db_set_record(emp_key, rec)
             public_msg = (
                 f"❌ **KECHIKISHGA RUXSAT BERILMADI**\n\n"
                 f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"⏰ **So'ralgan vaqt:** {selected_time}\n"
+                f"⏰ **So'ralgan vaqt:** {until_time}\n"
                 f"👑 **Qaror beruvchi:** {boss_name}\n"
                 f"📌 **Natija:** *Standard kechikish jarimasi qo'llaniladi.*"
             )
             await callback.answer("❌ Kechikish rad etildi.", show_alert=True)
+
+    cur.execute("UPDATE requests SET status=? WHERE req_id=?", ("approved" if action == "a" else "rejected", req_id))
+    conn.commit()
+    conn.close()
+
+    try:
+        updated_card = callback.message.text + f"\n\n📌 **HUKM:** {'✅ TASDIQLANDI' if action == 'a' else '❌ RAD ETILDI'} ({boss_name})"
+        await callback.message.edit_text(updated_card, parse_mode="Markdown")
+    except Exception:
+        pass
 
     await bot.send_message(
         chat_id=GROUP_CHAT_ID,
@@ -403,15 +359,92 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
         parse_mode="Markdown"
     )
 
-# 📊 SOAT 12:31 DAGI KUNLIK TO'LIQ HISOBOT
+# ------------------------------------------
+# D) ISHGA KELISH VIDEOSINI QABUL QILISH
+# ------------------------------------------
+@dp.message(F.video | F.video_note)
+async def handle_attendance_video(message: types.Message):
+    now = datetime.now(TASHKENT_TZ)
+    time_str = now.strftime("%H:%M")
+    current_minutes = now.hour * 60 + now.minute
+    limit_minutes = 9 * 60  # Soat 09:00 ISH BOSHLANISH VAQTI
+
+    username = (message.from_user.username or "").lower()
+    full_name = message.from_user.full_name
+    emp_key = username if username in EMPLOYEES else "unknown"
+    emp_data = EMPLOYEES.get(emp_key, {"name": full_name, "per_min": 1000, "absent": 50000})
+
+    records = db_get_records()
+    prev_rec = records.get(emp_key, {})
+
+    # Kechikishga ruxsat borligini tekshirish
+    if prev_rec.get("status") == "late_approved":
+        until_str = prev_rec.get("until_time", "09:30")
+        try:
+            h, m = map(int, until_str.split(":"))
+            approved_limit = h * 60 + m
+            if current_minutes <= approved_limit:
+                rec = {"name": emp_data["name"], "status": "on_time_approved", "time": time_str, "late": 0, "fine": 0}
+                db_set_record(emp_key, rec)
+                await message.reply(
+                    f"✅ **Ruxsat berilgan vaqtda kelindi!**\n\n"
+                    f"👤 **Xodim:** {emp_data['name']}\n"
+                    f"🕒 **Kelgan vaqti:** {time_str}\n"
+                    f"👑 **Ruxsat bergan rahbar:** {prev_rec.get('boss', 'Rahbar')}\n"
+                    f"📌 **Jarima:** 0 so'm",
+                    parse_mode="Markdown"
+                )
+                return
+        except Exception:
+            pass
+
+    # Standard vaqt bo'yicha hisoblash (09:00 gacha)
+    if current_minutes <= limit_minutes:
+        rec = {"name": emp_data["name"], "status": "on_time", "time": time_str, "late": 0, "fine": 0}
+        db_set_record(emp_key, rec)
+        await message.reply(
+            f"✅ **O'z vaqtida kelindi!**\n\n"
+            f"👤 **Xodim:** {emp_data['name']}\n"
+            f"🕒 **Vaqt:** {time_str}\n"
+            f"🎉 **Barakalla!** Bugun jarima qo'llanilmaydi.",
+            parse_mode="Markdown"
+        )
+    else:
+        late_mins = current_minutes - limit_minutes
+        fine = late_mins * emp_data["per_min"]
+        rec = {"name": emp_data["name"], "status": "late", "time": time_str, "late": late_mins, "fine": fine}
+        db_set_record(emp_key, rec)
+
+        fine_msg = (
+            f"⚠️ **ISHGA KECHIKIB KELINDI!**\n\n"
+            f"👤 **Xodim:** {emp_data['name']}\n"
+            f"🕒 **Kelgan vaqti:** {time_str}\n"
+            f"⏰ **Kechikish:** {late_mins} daqiqa\n"
+            f"💸 **Hisoblangan jarima:** {fine:,} so'm"
+        )
+
+        await message.reply(fine_msg, parse_mode="Markdown")
+
+        # Jarimalar mavzusiga ham xabar yuborish
+        await bot.send_message(
+            chat_id=GROUP_CHAT_ID,
+            text=fine_msg,
+            message_thread_id=JARIMALAR_THREAD_ID,
+            parse_mode="Markdown"
+        )
+
+# ------------------------------------------
+# E) SOAT 12:31 DAGI KUNLIK HISOBOT (CRON)
+# ------------------------------------------
 async def check_absentees_1231():
+    records = db_get_records()
     present_text = []
     absent_text = []
     total_fine = 0
     
     for key, data in EMPLOYEES.items():
-        if key in today_records:
-            rec = today_records[key]
+        if key in records:
+            rec = records[key]
             st = rec["status"]
             
             if st == "on_time":
@@ -422,14 +455,14 @@ async def check_absentees_1231():
                 present_text.append(f"🟡 **{data['name']}** — {rec['time']} da keldi ({rec['late']} daqiqa kechikdi, Jarima: {rec['fine']:,} so'm)")
                 total_fine += rec["fine"]
             elif st == "excused_approved":
-                present_text.append(f"🔵 **{data['name']}** — Sababli kelmadi ({rec['boss']} tomonidan RUXSAT BERILGAN)")
+                present_text.append(f"🔵 **{data['name']}** — Sababli kelmadi ({rec.get('boss', 'Rahbar')} tomonidan RUXSAT BERILGAN)")
             elif st == "excused_rejected":
                 fine = data["absent"]
-                absent_text.append(f"🔴 **{data['name']}** — Kelmadi (Ruxsat so'ralgan, lekin {rec['boss']} tomonidan RAD ETILGAN. Jarima: {fine:,} so'm)")
+                absent_text.append(f"🔴 **{data['name']}** — Kelmadi (Ruxsat so'ralgan, lekin {rec.get('boss', 'Rahbar')} tomonidan RAD ETILGAN. Jarima: {fine:,} so'm)")
                 total_fine += fine
             elif st == "late_approved":
                 fine = data["absent"]
-                absent_text.append(f"🔴 **{data['name']}** — {rec['until_time']} gacha ruxsat olgan edi, lekin kelmadi (Jarima: {fine:,} so'm)")
+                absent_text.append(f"🔴 **{data['name']}** — {rec.get('until_time', '12:30')} gacha ruxsat olgan edi, lekin kelmadi (Jarima: {fine:,} so'm)")
                 total_fine += fine
             elif st == "late_rejected":
                 fine = data["absent"]
@@ -459,7 +492,9 @@ async def check_absentees_1231():
         parse_mode="Markdown"
     )
 
-# 🌐 RENDER BEPUL TARIFI UCHUN VEB-SERVER (PORT CHECK)
+# ------------------------------------------
+# F) RENDER PORTI UCHUN DUMMY WEB SERVER
+# ------------------------------------------
 async def start_dummy_server():
     app = web.Application()
     app.router.add_get("/", lambda r: web.Response(text="Ziynat Nazorat Bot is running 24/7 on Render!"))
@@ -469,29 +504,32 @@ async def start_dummy_server():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
+# ==========================================
+# 5. ASOSIY ISHGA TUSHIRISH (MAIN)
+# ==========================================
 async def main():
-    # Render bepul veb-serverini yurgizish
+    # Render portini ochiq ushlash uchun veb-serverni ishga tushiramiz
     await start_dummy_server()
 
     commands = [
         BotCommand(command="sabab", description="✍️ Kelolmaslik iltimosnomasi"),
         BotCommand(command="kech_qolish", description="⏰ Kech qolishga ruxsat so'rash"),
-        BotCommand(command="ketish", description="🚪 Ishxonadan chiqib ketish"),
-        BotCommand(command="qaytib_keldim", description="🔄 Ishxonaga qaytib kelish"),
-        BotCommand(command="id", description="🆔 ID ma'lumotlarini ko'rish"),
         BotCommand(command="start", description="🤖 Botni qayta ishga tushirish")
     ]
     
     await bot.set_my_commands(commands, scope=BotCommandScopeAllGroupChats())
     await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
     
+    # Har kuni soat 12:31 da avtomatik hisobot
     scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31)
-    scheduler.add_job(lambda: today_records.clear(), 'cron', hour=0, minute=0)
+    
+    # Har kuni yarim tunda (00:00 da) bazani tozalash
+    scheduler.add_job(db_clear_today, 'cron', hour=0, minute=0)
     
     scheduler.start()
     await bot.delete_webhook(drop_pending_updates=True)
     
-    print("🤖 Bot Render serverida muvaffaqiyatli ishga tushdi...")
+    print("🤖 Ziynat Nazorat Boti muvaffaqiyatli ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
