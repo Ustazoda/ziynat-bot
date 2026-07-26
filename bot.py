@@ -1,7 +1,9 @@
+import os
 import datetime
 import logging
 import asyncio
 from zoneinfo import ZoneInfo
+from aiohttp import web
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -12,7 +14,6 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, BotCommand,
     BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
 )
-from aiogram.client.session.aiohttp import AiohttpSession
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -33,9 +34,8 @@ GROUP_CHAT_ID = -1003993511736
 JARIMALAR_THREAD_ID = 55      # "Jarimalar" mavzusi ID si
 ISHGA_KELISH_THREAD_ID = 1   # "Ishga kelish vidyosi" mavzusi ID si
 
-# 🛑 PYTHONANYWHERE SERVER PROXY SOZLAMASI (Shart!)
-session = AiohttpSession(proxy="http://proxy.server:3128")
-bot = Bot(token=BOT_TOKEN, session=session)
+# 🤖 BOTNI ISHGA TUSHIRISH (Render uchun proksisiz)
+bot = Bot(token=BOT_TOKEN)
 
 # 👑 RAHBARLAR
 BOSS_USERNAMES = {"abduvali94", "abdullayev_12_00"}
@@ -183,7 +183,7 @@ async def handle_video(message: types.Message):
     first_name = message.from_user.first_name or ""
     emp_key, emp = get_employee(username, first_name)
     user_name = first_name or emp["name"]
-
+    
     now = now_tz()
     work_start = now.replace(hour=8, minute=0, second=0, microsecond=0)
     work_end = now.replace(hour=12, minute=30, second=0, microsecond=0)
@@ -199,7 +199,7 @@ async def handle_video(message: types.Message):
         allowed_until = today_records[emp_key].get("until_time", "12:30")
         h, m = map(int, allowed_until.split(":"))
         allowed_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
-
+        
         if now <= allowed_dt:
             today_records[emp_key] = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time_approved"}
             await message.answer(
@@ -216,9 +216,9 @@ async def handle_video(message: types.Message):
 
     late_minutes = int((now - work_start).total_seconds() / 60)
     fine_sum = calculate_fine(emp, late_minutes)
-
+    
     today_records[emp_key] = {"name": user_name, "time": time_str, "late": late_minutes, "fine": fine_sum, "status": "late"}
-
+    
     await message.answer(
         f"⚠️ **{user_name}**, siz bugun {late_minutes} daqiqa kechikdingiz. (Kelgan vaqtingiz: {time_str})\n"
         f"💸 **Jarima miqdori:** {fine_sum:,} so'm.",
@@ -257,7 +257,7 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
             InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"sabab_rej_{username}_{user_name}")
         ]
     ])
-
+    
     group_msg = (
         f"📩 **YANGI ILTIMOSNOMA (Sababli kelolmaslik)**\n\n"
         f"👤 **Xodim:** {user_name} (@{username})\n"
@@ -288,7 +288,7 @@ async def start_late_request(message: types.Message, state: FSMContext):
 async def handle_time_selection(callback: types.CallbackQuery, state: FSMContext):
     selected_time = callback.data.split("_")[1]
     await state.update_data(selected_time=selected_time)
-
+    
     await callback.message.edit_text(
         f"⏰ Belgilangan vaqt: **{selected_time}**\n\n"
         f"✍️ Endi kechikishingiz **sababini batafsil va jiddiy** yozib yuboring:",
@@ -302,7 +302,7 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
     user_name = message.from_user.first_name or "Xodim"
     username = message.from_user.username or ""
     reason_text = message.text
-
+    
     data = await state.get_data()
     selected_time = data.get("selected_time", "10:00")
 
@@ -318,7 +318,7 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
             InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"late_rej_{username}_{user_name}_{selected_time}")
         ]
     ])
-
+    
     group_msg = (
         f"⏰ **YANGI ILTIMOSNOMA (Kech qolishga ruxsat)**\n\n"
         f"👤 **Xodim:** {user_name} (@{username})\n"
@@ -326,7 +326,7 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
         f"📝 **Sababi:** {reason_text}\n\n"
         f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
     )
-
+    
     await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="Markdown")
     await state.clear()
 
@@ -334,7 +334,7 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("sabab_") | F.data.startswith("late_"))
 async def handle_boss_decisions(callback: types.CallbackQuery):
     clicker_username = (callback.from_user.username or "").lower()
-
+    
     if clicker_username not in BOSS_USERNAMES:
         await callback.answer("❌ Sizda bu qarorni qabul qilish huquqi yo'q! Qarorni faqat Abduvali yoki Ma'murxon beradi.", show_alert=True)
         return
@@ -408,12 +408,12 @@ async def check_absentees_1231():
     present_text = []
     absent_text = []
     total_fine = 0
-
+    
     for key, data in EMPLOYEES.items():
         if key in today_records:
             rec = today_records[key]
             st = rec["status"]
-
+            
             if st == "on_time":
                 present_text.append(f"🟢 **{data['name']}** — {rec['time']} da keldi (O'z vaqtida)")
             elif st == "on_time_approved":
@@ -441,15 +441,15 @@ async def check_absentees_1231():
             total_fine += fine
 
     report = f"📊 **SOAT 12:31 KUNLIK DAVOMAT VA JARIMALAR HISOBOTI**\n\n"
-
+    
     if present_text:
         report += "✅ **Ishga kelganlar va ruxsat olganlar:**\n" + "\n".join(present_text) + "\n\n"
     else:
         report += "⚠️ **Bugun hech kim ishga kelmadi!**\n\n"
-
+        
     if absent_text:
         report += "❌ **Ishga kelmaganlar:**\n" + "\n".join(absent_text) + "\n\n"
-
+        
     report += f"💸 **Bugungi jami belgilanayotgan jarima:** {total_fine:,} so'm."
 
     await bot.send_message(
@@ -459,7 +459,20 @@ async def check_absentees_1231():
         parse_mode="Markdown"
     )
 
+# 🌐 RENDER BEPUL TARIFI UCHUN VEB-SERVER (PORT CHECK)
+async def start_dummy_server():
+    app = web.Application()
+    app.router.add_get("/", lambda r: web.Response(text="Ziynat Nazorat Bot is running 24/7 on Render!"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
 async def main():
+    # Render bepul veb-serverini yurgizish
+    await start_dummy_server()
+
     commands = [
         BotCommand(command="sabab", description="✍️ Kelolmaslik iltimosnomasi"),
         BotCommand(command="kech_qolish", description="⏰ Kech qolishga ruxsat so'rash"),
@@ -468,17 +481,17 @@ async def main():
         BotCommand(command="id", description="🆔 ID ma'lumotlarini ko'rish"),
         BotCommand(command="start", description="🤖 Botni qayta ishga tushirish")
     ]
-
+    
     await bot.set_my_commands(commands, scope=BotCommandScopeAllGroupChats())
     await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
-
+    
     scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31)
     scheduler.add_job(lambda: today_records.clear(), 'cron', hour=0, minute=0)
-
+    
     scheduler.start()
     await bot.delete_webhook(drop_pending_updates=True)
-
-    print("🤖 Bot PythonAnywhere serverida muvaffaqiyatli ishga tushdi...")
+    
+    print("🤖 Bot Render serverida muvaffaqiyatli ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
