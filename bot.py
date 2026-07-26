@@ -96,7 +96,7 @@ DEFAULT_FINE = {
     "name": "Xodim",
     "work_start": (8, 0),
     "work_end": (12, 30),
-    "leave_time": "19:00",
+    "leave_time": "18:00",
     "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
     "absent": 120000,
 }
