@@ -42,9 +42,9 @@ BOSS_USERNAMES = {"abduvali94", "abdullayev_12_00"}
 EMPLOYEES = {
     "abdullayev_12_00": {
         "name": "Ma'murxon",
-        "work_start": (8, 0),
+        "work_start": (8, 20),
         "work_end": (12, 30),
-        "leave_time": "21:00",
+        "leave_time": "20:30",
         "rates": [(10, 30000), (30, 50000), (60, 70000), (120, 100000), (270, 150000)],
         "absent": 150000,
     },
@@ -82,7 +82,7 @@ EMPLOYEES = {
     },
     "@muhammad201207": {
         "name": "Muhammadsodiq",
-        "work_start": (8, 0),
+        "work_start": (7, 0),
         "work_end": (12, 30),
         "leave_time": "21:00",
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
