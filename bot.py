@@ -290,8 +290,8 @@ async def cmd_dam_olish(message: types.Message):
     
     await message.answer(msg, parse_mode="Markdown")
 
-# 📊 /statistika yoki /oylik
-@dp.message(Command("statistika", "oylik"))
+# 📊 /oylik xisobot
+@dp.message(Command("oylik"))
 async def cmd_monthly_stat(message: types.Message):
     now = now_tz()
     month_str = now.strftime("%Y-%m")
@@ -821,14 +821,13 @@ async def main():
     await start_dummy_server()
 
     commands = [
-        BotCommand(command="statistika", description="📊 Oylik davomat va maosh hisobi"),
-        BotCommand(command="oylik", description="📊 Oylik davomat va maosh hisobi"),
-        BotCommand(command="fayl", description="📎 Barcha davomat faylini yuklab olish"),
-        BotCommand(command="dam_olish", description="🌴 Dam olish kuni haqida ma'lumot"),
-        BotCommand(command="sabab", description="✍️ Kelolmaslik iltimosnomasi"),
         BotCommand(command="kech_qolish", description="⏰ Kech qolishga ruxsat so'rash"),
+        BotCommand(command="sabab", description="✍️ Kelolmaslik iltimosnomasi"),
         BotCommand(command="ketish", description="🚪 Ishxonadan chiqib ketish"),
         BotCommand(command="qaytib_keldim", description="🔄 Ishxonaga qaytib kelish"),
+        BotCommand(command="oylik", description="📊 Oylik davomat va maosh hisobi"),
+        BotCommand(command="dam_olish", description="🌴 Dam olish kuni haqida ma'lumot"),
+        BotCommand(command="fayl", description="📎 Barcha davomat faylini yuklab olish"),
         BotCommand(command="id", description="🆔 ID ma'lumotlarini ko'rish"),
         BotCommand(command="start", description="🤖 Botni qayta ishga tushirish")
     ]
