@@ -27,6 +27,10 @@ TZ = ZoneInfo("Asia/Tashkent")
 def now_tz() -> datetime.datetime:
     return datetime.datetime.now(TZ)
 
+def is_sunday() -> bool:
+    """Bugun Yakshanba (dam olish kuni) ekanligini aniqlash (6 = Yakshanba)"""
+    return now_tz().weekday() == 6
+
 # ==========================================================
 # 🔑 SOZLAMALAR (Environment Variables)
 # ==========================================================
@@ -100,7 +104,7 @@ DEFAULT_FINE = {
 }
 
 # ==========================================================
-# 🗄️ SQLITE DATABASE (Render Serverida Saqlash)
+# 🗄️ SQLITE DATABASE (Oylik Statistika va Bonuslar bilan)
 # ==========================================================
 DB_PATH = "ziynat_attendance.db"
 
@@ -109,18 +113,26 @@ def init_db():
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS attendance (
-            emp_key TEXT PRIMARY KEY,
+            emp_key TEXT,
             date_str TEXT,
             name TEXT,
             time_str TEXT,
             late_minutes INTEGER,
             fine INTEGER,
+            bonus INTEGER DEFAULT 0,
             status TEXT,
             until_time TEXT,
             boss TEXT,
-            reason TEXT
+            reason TEXT,
+            PRIMARY KEY (emp_key, date_str)
         )
     """)
+    # Eskidan bor bazalar uchun bonus ustunini qo'shish
+    try:
+        cur.execute("ALTER TABLE attendance ADD COLUMN bonus INTEGER DEFAULT 0")
+    except Exception:
+        pass
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS requests (
             req_id TEXT PRIMARY KEY,
@@ -143,14 +155,14 @@ def db_set_record(emp_key: str, record: dict):
     cur = conn.cursor()
     today_str = now_tz().strftime("%Y-%m-%d")
     cur.execute("""
-        INSERT INTO attendance (emp_key, date_str, name, time_str, late_minutes, fine, status, until_time, boss, reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(emp_key) DO UPDATE SET
-            date_str=excluded.date_str,
+        INSERT INTO attendance (emp_key, date_str, name, time_str, late_minutes, fine, bonus, status, until_time, boss, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(emp_key, date_str) DO UPDATE SET
             name=excluded.name,
             time_str=excluded.time_str,
             late_minutes=excluded.late_minutes,
             fine=excluded.fine,
+            bonus=COALESCE(excluded.bonus, attendance.bonus),
             status=excluded.status,
             until_time=excluded.until_time,
             boss=excluded.boss,
@@ -162,6 +174,7 @@ def db_set_record(emp_key: str, record: dict):
         record.get("time", ""),
         record.get("late", 0),
         record.get("fine", 0),
+        record.get("bonus", 0),
         record.get("status", ""),
         record.get("until_time", ""),
         record.get("boss", ""),
@@ -170,11 +183,20 @@ def db_set_record(emp_key: str, record: dict):
     conn.commit()
     conn.close()
 
+def db_add_bonus(emp_key: str, bonus_amount: int):
+    """/ketish vaqtida qo'shimcha ishlaganlik uchun bonusni saqlash"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    today_str = now_tz().strftime("%Y-%m-%d")
+    cur.execute("UPDATE attendance SET bonus=? WHERE emp_key=? AND date_str=?", (bonus_amount, emp_key, today_str))
+    conn.commit()
+    conn.close()
+
 def db_get_records() -> dict:
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     today_str = now_tz().strftime("%Y-%m-%d")
-    cur.execute("SELECT emp_key, name, time_str, late_minutes, fine, status, until_time, boss, reason FROM attendance WHERE date_str=?", (today_str,))
+    cur.execute("SELECT emp_key, name, time_str, late_minutes, fine, status, until_time, boss, reason, bonus FROM attendance WHERE date_str=?", (today_str,))
     rows = cur.fetchall()
     conn.close()
     res = {}
@@ -187,19 +209,11 @@ def db_get_records() -> dict:
             "status": r[5],
             "until_time": r[6],
             "boss": r[7],
-            "reason": r[8]
+            "reason": r[8],
+            "bonus": r[9] or 0
         }
     return res
 
-def db_clear_today():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    today_str = now_tz().strftime("%Y-%m-%d")
-    cur.execute("DELETE FROM attendance WHERE date_str=?", (today_str,))
-    conn.commit()
-    conn.close()
-
-# FSM states
 class ExcuseState(StatesGroup):
     waiting_for_reason = State()
 
@@ -248,6 +262,85 @@ async def cmd_start(message: types.Message):
         parse_mode="Markdown"
     )
 
+# 🌴 /dam_olish — DAM OLISH KUNLARI HAQIDA MA'LUMOT
+@dp.message(Command("dam_olish"))
+async def cmd_dam_olish(message: types.Message):
+    now = now_tz()
+    days = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+    today_name = days[now.weekday()]
+    
+    if is_sunday():
+        msg = f"🌴 **Bugun {today_name} — Rasmiy dam olish kuni!**\n\nBugun do'konimizda ish kuni emas. Kechikish va jarimalar hisoblanmaydi."
+    else:
+        msg = f"📅 **Bugun {today_name} — Ish kuni.**\n\n📌 Rasmiy dam olish kuni: **Yakshanba**."
+    
+    await message.answer(msg, parse_mode="Markdown")
+
+# 📊 /statistika yoki /oylik — OYLIK DAVOMAT VA MAOSH HISOBI
+@dp.message(Command("statistika", "oylik"))
+async def cmd_monthly_stat(message: types.Message):
+    now = now_tz()
+    month_str = now.strftime("%Y-%m")  # Masalan: 2026-07
+    month_name = now.strftime("%B %Y")
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT emp_key, status, late_minutes, fine, bonus
+        FROM attendance
+        WHERE date_str LIKE ?
+    """, (f"{month_str}-%",))
+    rows = cur.fetchall()
+    conn.close()
+
+    # Statik xaritalash
+    stats = {}
+    for k, v in EMPLOYEES.items():
+        stats[k] = {
+            "name": v["name"],
+            "present": 0,
+            "late_mins": 0,
+            "fine": 0,
+            "bonus": 0,
+            "excused": 0,
+            "absent": 0
+        }
+
+    for r in rows:
+        key, st, late, fine, bonus = r[0], r[1], r[2] or 0, r[3] or 0, r[4] or 0
+        if key not in stats:
+            stats[key] = {"name": key, "present": 0, "late_mins": 0, "fine": 0, "bonus": 0, "excused": 0, "absent": 0}
+        
+        if st in ["on_time", "on_time_approved", "late"]:
+            stats[key]["present"] += 1
+            stats[key]["late_mins"] += late
+            stats[key]["fine"] += fine
+        elif st == "excused_approved":
+            stats[key]["excused"] += 1
+        elif st in ["excused_rejected", "late_rejected", "absent"]:
+            stats[key]["absent"] += 1
+            stats[key]["fine"] += fine
+
+        stats[key]["bonus"] += bonus
+
+    report = f"📊 **{month_str} OYLIK DAVOMAT VA MAOSH HISOBI**\n\n"
+    
+    for key, s in stats.items():
+        net = s["bonus"] - s["fine"]
+        net_str = f"+{net:,}" if net >= 0 else f"{net:,}"
+        report += (
+            f"👤 **{s['name']}** (@{key}):\n"
+            f"  🟢 Ishga kelgan: **{s['present']} kun**\n"
+            f"  🔵 Uzrli kelmagan: **{s['excused']} kun**\n"
+            f"  🔴 Kelmagan/Rad etilgan: **{s['absent']} kun**\n"
+            f"  ⏱ Jami kechikish: **{s['late_mins']} daqiqa**\n"
+            f"  💸 Jami jarima: **{s['fine']:,} so'm**\n"
+            f"  🎁 Jami bonus: **{s['bonus']:,} so'm**\n"
+            f"  ⚖️ **Net balans (Bonus - Jarima):** `{net_str} so'm`\n\n"
+        )
+
+    await message.answer(report, parse_mode="Markdown")
+
 # /ketish
 @dp.message(Command("ketish"))
 async def handle_ketish(message: types.Message):
@@ -269,6 +362,7 @@ async def handle_ketish(message: types.Message):
     if now > leave_dt:
         extra_minutes = int((now - leave_dt).total_seconds() / 60)
         bonus_sum = calculate_fine(emp, extra_minutes)
+        db_add_bonus(emp_key, bonus_sum) # Bazaga bonusni saqlash
         base_text += (
             f"\n✅ **Qo'shimcha ishlagan vaqt:** {extra_minutes} daqiqa\n"
             f"🎁 **Bonus miqdori:** {bonus_sum:,} so'm."
@@ -290,13 +384,20 @@ async def handle_qaytib_keldim(message: types.Message):
         parse_mode="Markdown"
     )
 
-# 📹 VIDEO NOTE / VIDEO (Tuzatilgan Dinamik Vaqt Algoritmi)
+# 📹 VIDEO NOTE / VIDEO
 @dp.message(F.video | F.video_note)
 async def handle_video(message: types.Message):
     username = message.from_user.username
     first_name = message.from_user.first_name or ""
     emp_key, emp = get_employee(username, first_name)
     user_name = first_name or emp["name"]
+
+    if is_sunday():
+        await message.answer(
+            f"🌴 **{user_name}**, bugun Yakshanba — rasmiy dam olish kuni!\nVideo qabul qilindi, lekin jarima va kechikishlar hisoblanmaydi.",
+            parse_mode="Markdown"
+        )
+        return
     
     now = now_tz()
     start_h, start_m = emp.get("work_start", (8, 0))
@@ -365,6 +466,10 @@ async def handle_video(message: types.Message):
 # ✍️ /sabab — ILTIMOSNOMA
 @dp.message(Command("sabab"))
 async def start_excuse(message: types.Message, state: FSMContext):
+    if is_sunday():
+        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Iltimosnoma yuborish shart emas!", parse_mode="Markdown")
+        return
+
     emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
     now = now_tz()
     start_h, start_m = emp.get("work_start", (8, 0))
@@ -373,8 +478,7 @@ async def start_excuse(message: types.Message, state: FSMContext):
     if now >= work_start:
         await message.answer(
             f"⛔ **Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!**\n\n"
-            f"Sababli kelolmaslik haqidagi iltimosnoma faqat ish boshlanishidan oldin "
-            f"(bir kun oldin yoki ertalab soat {start_h:02d}:{start_m:02d} dan avval) yuborilishi mumkin.",
+            f"Sababli kelolmaslik haqidagi iltimosnoma faqat ish boshlanishidan oldin yuborilishi mumkin.",
             parse_mode="Markdown"
         )
         return
@@ -382,7 +486,6 @@ async def start_excuse(message: types.Message, state: FSMContext):
     warning_text = (
         "⚠️ **DIQQAT! SABABLI ISHGA KELOLMASLIK BO'YICHA ILTIMOSNOMA**\n\n"
         "Iltimos, ishga kelolmasligingiz sababini **juda jiddiy yondashib, to'liq va tushunarli** holatda yozing.\n\n"
-        "❗️ *Yuzaki yoki sababsiz yozilgan iltimosnomalar rahbariyat tomonidan rad etiladi va belgilangan jarima kuchida qoladi.*\n\n"
         "✍️ **Sababingizni ushbu mavzuga yozib yuboring:**"
     )
     warning_msg = await message.answer(warning_text, parse_mode="Markdown")
@@ -440,6 +543,10 @@ time_picker_keyboard = InlineKeyboardMarkup(inline_keyboard=[
 
 @dp.message(Command("kech_qolish"))
 async def start_late_request(message: types.Message, state: FSMContext):
+    if is_sunday():
+        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Kechikishga ruxsat so'rash shart emas!", parse_mode="Markdown")
+        return
+
     emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
     now = now_tz()
     start_h, start_m = emp.get("work_start", (8, 0))
@@ -448,8 +555,7 @@ async def start_late_request(message: types.Message, state: FSMContext):
     if now >= work_start:
         await message.answer(
             f"⛔ **Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!**\n\n"
-            f"Kechikishga ruxsat so'rash faqat ish boshlanishidan oldin "
-            f"(bir kun oldin yoki ertalab soat {start_h:02d}:{start_m:02d} dan avval) mumkin.",
+            f"Kechikishga ruxsat so'rash faqat ish boshlanishidan oldin mumkin.",
             parse_mode="Markdown"
         )
         return
@@ -612,6 +718,15 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
 
 # 📊 SOAT 12:31 DAGI KUNLIK TO'LIQ HISOBOT
 async def check_absentees_1231():
+    if is_sunday():
+        await bot.send_message(
+            chat_id=GROUP_CHAT_ID,
+            text="🌴 **BUGUN YAKSHANBA (DAM OLISH KUNI)**\n\nBugun do'konimizda ish kuni emas, shuning uchun davomat va jarimalar hisoblanmadi. Barchaga maroqli dam olish tilaymiz!",
+            message_thread_id=JARIMALAR_THREAD_ID,
+            parse_mode="Markdown"
+        )
+        return
+
     records = db_get_records()
     present_text = []
     absent_text = []
@@ -647,6 +762,8 @@ async def check_absentees_1231():
             fine = data["absent"]
             absent_text.append(f"🔴 **{data['name']}** (@{key}) — Kelmadi (Jarima: {fine:,} so'm)")
             total_fine += fine
+            # Ishga kelmaganini bazaga ham absent shaklida saqlash (Oylik statistika to'g'ri bo'lishi uchun)
+            db_set_record(key, {"name": data["name"], "fine": fine, "status": "absent"})
 
     report = f"📊 **SOAT 12:31 KUNLIK DAVOMAT VA JARIMALAR HISOBOTI**\n\n"
     
@@ -681,6 +798,9 @@ async def main():
     await start_dummy_server()
 
     commands = [
+        BotCommand(command="statistika", description="📊 Oylik davomat va maosh hisobi"),
+        BotCommand(command="oylik", description="📊 Oylik davomat va maosh hisobi"),
+        BotCommand(command="dam_olish", description="🌴 Dam olish kuni haqida ma'lumot"),
         BotCommand(command="sabab", description="✍️ Kelolmaslik iltimosnomasi"),
         BotCommand(command="kech_qolish", description="⏰ Kech qolishga ruxsat so'rash"),
         BotCommand(command="ketish", description="🚪 Ishxonadan chiqib ketish"),
@@ -693,7 +813,6 @@ async def main():
     await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
     
     scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31)
-    scheduler.add_job(db_clear_today, 'cron', hour=0, minute=0)
     
     scheduler.start()
     await bot.delete_webhook(drop_pending_updates=True)
