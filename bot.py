@@ -1,8 +1,10 @@
 import os
 import json
+import base64
 import datetime
 import logging
 import asyncio
+import aiohttp
 from zoneinfo import ZoneInfo
 from aiohttp import web
 
@@ -28,16 +30,21 @@ def now_tz() -> datetime.datetime:
     return datetime.datetime.now(TZ)
 
 def is_sunday() -> bool:
-    """Bugun Yakshanba (dam olish kuni) ekanligini aniqlash"""
     return now_tz().weekday() == 6
 
 # ==========================================================
-# 🔑 SOZLAMALAR (Environment Variables)
+# 🔑 SOZLAMALAR
 # ==========================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8707986524:AAF0tby_NWvgLCxBIkofyHL3nE-Tce-EELE")
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1003993511736"))
 JARIMALAR_THREAD_ID = int(os.getenv("JARIMALAR_THREAD_ID", "55"))
 ISHGA_KELISH_THREAD_ID = int(os.getenv("ISHGA_KELISH_THREAD_ID", "1"))
+
+# 🐙 GITHUB AVTO-SAQLASH SOZLAMALARI
+GITHUB_REPO = "Ustazoda/ziynat-bot"
+GITHUB_FILE_PATH = "attendance_data.json"
+# 👇 Shu yerga 2-qadamda olgan GitHub Tokeningizni qo'yasiz:
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "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")
 
 bot = Bot(token=BOT_TOKEN)
 
@@ -104,9 +111,51 @@ DEFAULT_FINE = {
 }
 
 # ==========================================================
-# 📁 FAYLGA YOZISH VA O'QISH TIZIMI (JSON Storage)
+# 📁 FAYLGA YOZISH VA GITHUB BILAN SINXRONLASH
 # ==========================================================
 DATA_FILE = "attendance_data.json"
+
+async def push_to_github():
+    """Faylni avtomatik GitHub repository'ga yuklab qo'yish"""
+    if not GITHUB_TOKEN or GITHUB_TOKEN == "ghp_YOUR_GITHUB_TOKEN_HERE":
+        return
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            sha = ""
+            async with session.get(url, headers=headers) as resp:
+                if resp.status == 200:
+                    res_data = await resp.json()
+                    sha = res_data.get("sha", "")
+
+            if not os.path.exists(DATA_FILE):
+                return
+
+            with open(DATA_FILE, "rb") as f:
+                content_bytes = f.read()
+                content_b64 = base64.b64encode(content_bytes).decode("utf-8")
+
+            payload = {
+                "message": "🤖 Auto-update attendance_data.json [skip render]",
+                "content": content_b64,
+                "branch": "main"
+            }
+            if sha:
+                payload["sha"] = sha
+
+            async with session.put(url, headers=headers, json=payload) as put_resp:
+                if put_resp.status in [200, 201]:
+                    logging.info("✅ attendance_data.json GitHub'ga muvaffaqiyatli saqlandi!")
+                else:
+                    logging.error(f"❌ GitHub'ga saqlashda xato: {await put_resp.text()}")
+    except Exception as e:
+        logging.error(f"❌ GitHub sync xatosi: {e}")
 
 def load_db() -> dict:
     if not os.path.exists(DATA_FILE):
@@ -127,6 +176,13 @@ def save_db(data: dict):
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+            
+        # Har safar faylga yozilganda, uni GitHub'ga ham saqlash
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(push_to_github())
+        except RuntimeError:
+            pass
     except Exception as e:
         logging.error(f"Faylga yozishda xatolik: {e}")
 
@@ -220,7 +276,7 @@ async def cmd_get_file(message: types.Message):
     else:
         await message.answer("⚠️ Hali fayl yaratilmagan.")
 
-# 🌴 /dam_olish — DAM OLISH KUNI HAQIDA MA'LUMOT
+# 🌴 /dam_olish
 @dp.message(Command("dam_olish"))
 async def cmd_dam_olish(message: types.Message):
     now = now_tz()
@@ -234,7 +290,7 @@ async def cmd_dam_olish(message: types.Message):
     
     await message.answer(msg, parse_mode="Markdown")
 
-# 📊 /statistika yoki /oylik — FAYLDAN OYLIK HISOBOT CHIQARISH
+# 📊 /statistika yoki /oylik
 @dp.message(Command("statistika", "oylik"))
 async def cmd_monthly_stat(message: types.Message):
     now = now_tz()
@@ -285,7 +341,7 @@ async def cmd_monthly_stat(message: types.Message):
 
                 stats[emp_key]["bonus"] += bonus
 
-    report = f"📊 **{month_str} OYLIK DAVOMAT VA MAOSH HISOBI (FAYLDAN)**\n\n"
+    report = f"📊 **{month_str} OYLIK DAVOMAT VA MAOSH HISOBI**\n\n"
     
     for key, s in stats.items():
         net = s["bonus"] - s["fine"]
@@ -324,7 +380,7 @@ async def handle_ketish(message: types.Message):
     if now > leave_dt:
         extra_minutes = int((now - leave_dt).total_seconds() / 60)
         bonus_sum = calculate_fine(emp, extra_minutes)
-        db_add_bonus(emp_key, bonus_sum) # Faylga bonusni yozish
+        db_add_bonus(emp_key, bonus_sum)
         base_text += (
             f"\n✅ **Qo'shimcha ishlagan vaqt:** {extra_minutes} daqiqa\n"
             f"🎁 **Bonus miqdori:** {bonus_sum:,} so'm."
@@ -346,7 +402,7 @@ async def handle_qaytib_keldim(message: types.Message):
         parse_mode="Markdown"
     )
 
-# 📹 VIDEO NOTE / VIDEO (FAYLGA YOZISH BALAN)
+# 📹 VIDEO NOTE / VIDEO
 @dp.message(F.video | F.video_note)
 async def handle_video(message: types.Message):
     username = message.from_user.username
@@ -385,7 +441,7 @@ async def handle_video(message: types.Message):
         
         if now <= allowed_dt:
             rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time_approved", "until_time": allowed_until}
-            db_set_record(emp_key, rec) # Faylga saqlash
+            db_set_record(emp_key, rec)
             await message.answer(
                 f"✅ Baraka toping, **{user_name}**!\n"
                 f"Ruxsat berilgan vaqtda ({time_str} da) keldingiz. Jarima qo'llanilmaydi.",
@@ -396,7 +452,7 @@ async def handle_video(message: types.Message):
             late_mins = int((now - allowed_dt).total_seconds() / 60)
             fine_sum = calculate_fine(emp, late_mins)
             rec = {"name": user_name, "time": time_str, "late": late_mins, "fine": fine_sum, "status": "late"}
-            db_set_record(emp_key, rec) # Faylga saqlash
+            db_set_record(emp_key, rec)
             await message.answer(
                 f"⚠️ **{user_name}**, siz ruxsat berilgan vaqtdan ({allowed_until}) {late_mins} daqiqa kechikdingiz!\n"
                 f"💸 **Jarima miqdori:** {fine_sum:,} so'm.",
@@ -406,7 +462,7 @@ async def handle_video(message: types.Message):
 
     if now <= work_start:
         rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time"}
-        db_set_record(emp_key, rec) # Faylga saqlash
+        db_set_record(emp_key, rec)
         await message.answer(
             f"✅ Baraka toping, **{user_name}**!\nIshga o'z vaqtida keldingiz. (Vaqt: {time_str})",
             parse_mode="Markdown"
@@ -417,7 +473,7 @@ async def handle_video(message: types.Message):
     fine_sum = calculate_fine(emp, late_minutes)
     
     rec = {"name": user_name, "time": time_str, "late": late_minutes, "fine": fine_sum, "status": "late"}
-    db_set_record(emp_key, rec) # Faylga saqlash
+    db_set_record(emp_key, rec)
     
     await message.answer(
         f"⚠️ **{user_name}**, siz bugun {late_minutes} daqiqa kechikdingiz. (Kelgan vaqtingiz: {time_str})\n"
@@ -684,7 +740,7 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
         parse_mode="Markdown"
     )
 
-# 📊 SOAT 12:31 DAGI KUNLIK TO'LIQ HISOBOT (FAYLDAN O'QIB CHIQARISH)
+# 📊 SOAT 12:31 DAGI KUNLIK HISOBOT
 async def check_absentees_1231():
     if is_sunday():
         await bot.send_message(
@@ -695,7 +751,7 @@ async def check_absentees_1231():
         )
         return
 
-    records = db_get_today_records() # Fayldan o'qib olish
+    records = db_get_today_records()
     present_text = []
     absent_text = []
     total_fine = 0
@@ -730,7 +786,6 @@ async def check_absentees_1231():
             fine = data["absent"]
             absent_text.append(f"🔴 **{data['name']}** (@{key}) — Kelmadi (Jarima: {fine:,} so'm)")
             total_fine += fine
-            # Faylga kelmaganlarni o'chib ketmaydigan qilib saqlab qo'yish
             db_set_record(key, {"name": data["name"], "fine": fine, "status": "absent"})
 
     report = f"📊 **SOAT 12:31 KUNLIK DAVOMAT VA JARIMALAR HISOBOTI**\n\n"
@@ -752,7 +807,7 @@ async def check_absentees_1231():
         parse_mode="Markdown"
     )
 
-# 🌐 RENDER BEPUL TARIFI UCHUN VEB-SERVER
+# 🌐 RENDER VEB-SERVER
 async def start_dummy_server():
     app = web.Application()
     app.router.add_get("/", lambda r: web.Response(text="Ziynat Nazorat Bot is running 24/7 on Render!"))
@@ -786,7 +841,7 @@ async def main():
     scheduler.start()
     await bot.delete_webhook(drop_pending_updates=True)
     
-    print("🤖 Ziynat Nazorat Boti (Fayl tizimi bilan) muvaffaqiyatli ishga tushdi...")
+    print("🤖 Ziynat Nazorat Boti (GitHub Avto-Saqlash bilan) muvaffaqiyatli ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
