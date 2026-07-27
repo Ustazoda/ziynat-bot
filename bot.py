@@ -253,13 +253,30 @@ async def cmd_start(message: types.Message):
 async def handle_ketish(message: types.Message):
     emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
     name = message.from_user.first_name or emp["name"]
-    now_time = now_tz().strftime("%H:%M")
-    await message.answer(
+
+    now = now_tz()
+    now_time = now.strftime("%H:%M")
+
+    leave_h, leave_m = map(int, emp["leave_time"].split(":"))
+    leave_dt = now.replace(hour=leave_h, minute=leave_m, second=0, microsecond=0)
+
+    base_text = (
         f"🚪 **{name}** ishxonadan chiqib ketdi.\n"
         f"⏰ **Chiqish vaqti:** {now_time}\n"
-        f"📌 *Belgilangan ketish vaqti: {emp['leave_time']}*",
-        parse_mode="Markdown"
+        f"📌 *Belgilangan ketish vaqti: {emp['leave_time']}*\n"
     )
+
+    if now > leave_dt:
+        extra_minutes = int((now - leave_dt).total_seconds() / 60)
+        bonus_sum = calculate_fine(emp, extra_minutes)
+        base_text += (
+            f"\n✅ **Qo'shimcha ishlagan vaqt:** {extra_minutes} daqiqa\n"
+            f"🎁 **Bonus miqdori:** {bonus_sum:,} so'm."
+        )
+    else:
+        base_text += "\nℹ️ *Ish vaqti hali tugamagan, shuning uchun bonus qo'llanilmaydi.*"
+
+    await message.answer(base_text, parse_mode="Markdown")
 
 # /qaytib_keldim
 @dp.message(Command("qaytib_keldim"))
