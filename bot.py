@@ -531,7 +531,7 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
     parts = callback.data.split("_")
     category = parts[0]   # 'sabab' or 'late'
     action = parts[1]     # 'a' (approve) or 'r' (reject)
-    req_id = f"{category}_{parts[2]}" if len(parts) > 2 else ""
+    req_id = "_".join(parts[2:]) if len(parts) > 2 else ""
 
     boss_name = callback.from_user.first_name or "Rahbar"
 
