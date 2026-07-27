@@ -377,16 +377,21 @@ async def handle_ketish(message: types.Message):
         f"📌 *Belgilangan ketish vaqti: {emp['leave_time']}*\n"
     )
 
+    rec = {"name": name, "left_at": now_time}
+
     if now > leave_dt:
         extra_minutes = int((now - leave_dt).total_seconds() / 60)
         bonus_sum = calculate_fine(emp, extra_minutes)
-        db_add_bonus(emp_key, bonus_sum)
+        rec["bonus"] = bonus_sum
         base_text += (
             f"\n✅ **Qo'shimcha ishlagan vaqt:** {extra_minutes} daqiqa\n"
             f"🎁 **Bonus miqdori:** {bonus_sum:,} so'm."
         )
     else:
         base_text += "\nℹ️ *Ish vaqti hali tugamagan, shuning uchun bonus qo'llanilmaydi.*"
+
+    # Har doim /ketish bosilganda faylga va GitHub'ga yozish
+    db_set_record(emp_key, rec)
 
     await message.answer(base_text, parse_mode="Markdown")
 
