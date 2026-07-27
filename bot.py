@@ -44,7 +44,7 @@ ISHGA_KELISH_THREAD_ID = int(os.getenv("ISHGA_KELISH_THREAD_ID", "1"))
 GITHUB_REPO = "Ustazoda/ziynat-bot"
 GITHUB_FILE_PATH = "attendance_data.json"
 # 👇 Shu yerga 2-qadamda olgan GitHub Tokeningizni qo'yasiz:
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 
 bot = Bot(token=BOT_TOKEN)
 
