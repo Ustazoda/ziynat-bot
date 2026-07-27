@@ -348,6 +348,20 @@ async def handle_video(message: types.Message):
 # ✍️ /sabab — ILTIMOSNOMA
 @dp.message(Command("sabab"))
 async def start_excuse(message: types.Message, state: FSMContext):
+    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
+    now = now_tz()
+    start_h, start_m = emp.get("work_start", (8, 0))
+    work_start = now.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+
+    if now >= work_start:
+        await message.answer(
+            f"⛔ **Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!**\n\n"
+            f"Sababli kelolmaslik haqidagi iltimosnoma faqat ish boshlanishidan oldin "
+            f"(bir kun oldin yoki ertalab soat {start_h:02d}:{start_m:02d} dan avval) yuborilishi mumkin.",
+            parse_mode="Markdown"
+        )
+        return
+
     warning_text = (
         "⚠️ **DIQQAT! SABABLI ISHGA KELOLMASLIK BO'YICHA ILTIMOSNOMA**\n\n"
         "Iltimos, ishga kelolmasligingiz sababini **juda jiddiy yondashib, to'liq va tushunarli** holatda yozing.\n\n"
@@ -409,6 +423,20 @@ time_picker_keyboard = InlineKeyboardMarkup(inline_keyboard=[
 
 @dp.message(Command("kech_qolish"))
 async def start_late_request(message: types.Message, state: FSMContext):
+    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
+    now = now_tz()
+    start_h, start_m = emp.get("work_start", (8, 0))
+    work_start = now.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+
+    if now >= work_start:
+        await message.answer(
+            f"⛔ **Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!**\n\n"
+            f"Kechikishga ruxsat so'rash faqat ish boshlanishidan oldin "
+            f"(bir kun oldin yoki ertalab soat {start_h:02d}:{start_m:02d} dan avval) mumkin.",
+            parse_mode="Markdown"
+        )
+        return
+
     msg = await message.answer(
         "⏰ **KECHIKISHGA RUXSAT SO'RASH**\n\n"
         "Iltimos, bugun soat **nechagacha kechikishingizni** pastdagi tugmalar orqali tanlang:",
