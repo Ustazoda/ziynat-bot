@@ -1,4 +1,12 @@
 {
-  "attendance": {},
+  "attendance": {
+    "2026-07-27": {
+      "groupanonymousbot": {
+        "name": "Group",
+        "left_at": "18:45",
+        "bonus": 40000
+      }
+    }
+  },
   "requests": {}
 }
