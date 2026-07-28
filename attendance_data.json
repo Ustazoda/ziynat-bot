@@ -6,6 +6,15 @@
         "left_at": "18:45",
         "bonus": 40000
       }
+    },
+    "2026-07-28": {
+      "muhammad201207": {
+        "name": "Umarov777777777",
+        "time": "07:43",
+        "late": 43,
+        "fine": 40000,
+        "status": "late"
+      }
     }
   },
   "requests": {}
