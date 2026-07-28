@@ -20,7 +20,8 @@
         "time": "07:49",
         "late": 0,
         "fine": 0,
-        "status": "on_time"
+        "status": "on_time",
+        "left_at": "17:43"
       },
       "muradjanvna_m": {
         "name": "ℳ",
