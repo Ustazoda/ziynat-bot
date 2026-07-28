@@ -28,6 +28,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "ganiboyev_ozodbek": {
+        "name": "ㅤ𓈆1%ㅤㅤㅤㅤ",
+        "time": "08:01",
+        "late": 1,
+        "fine": 15000,
+        "status": "late"
       }
     }
   },
