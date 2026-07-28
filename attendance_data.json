@@ -14,6 +14,13 @@
         "late": 43,
         "fine": 40000,
         "status": "late"
+      },
+      "groupanonymousbot": {
+        "name": "Group",
+        "time": "07:49",
+        "late": 0,
+        "fine": 0,
+        "status": "on_time"
       }
     }
   },
