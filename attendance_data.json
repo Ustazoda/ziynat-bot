@@ -92,7 +92,8 @@
         "late": 0,
         "fine": 0,
         "status": "on_time",
-        "left_at": "13:59"
+        "left_at": "20:30",
+        "bonus": 80000
       },
       "muradjanvna_m": {
         "name": "ℳ",
