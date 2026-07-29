@@ -99,6 +99,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "abdullayev_12_00": {
+        "name": "abdullayev",
+        "time": "08:10",
+        "late": 10,
+        "fine": 15000,
+        "status": "late"
       }
     }
   },
