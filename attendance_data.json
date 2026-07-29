@@ -85,6 +85,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "groupanonymousbot": {
+        "name": "Group",
+        "time": "07:25",
+        "late": 0,
+        "fine": 0,
+        "status": "on_time"
       }
     }
   },
