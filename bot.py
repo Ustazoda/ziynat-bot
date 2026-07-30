@@ -25,20 +25,23 @@ logging.basicConfig(
 # === SOZLAMALAR ===
 BOT_TOKEN = os.getenv("BOT_TOKEN", "7634467401:AAFiiVFYVFFtk6F3b8TFfhrBFacZVPz2ZTE")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "1168952611"))
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 
 # Gemini Client
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-VALIDATION_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro']
-ANALYSIS_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro']
+# Faol va rasmiy ishlaydigan Gemini modellar ro'yxati
+VALIDATION_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+ANALYSIS_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
 
 
-def call_gemini_with_fallback(contents, models):
+def call_gemini_with_fallback(contents, models, config=None):
     """Modellarni birma-bir sinab ko'radi."""
     last_error = None
     for model_name in models:
         try:
+            if config:
+                return ai_client.models.generate_content(model=model_name, contents=contents, config=config)
             return ai_client.models.generate_content(model=model_name, contents=contents)
         except Exception as e:
             last_error = e
@@ -53,7 +56,6 @@ async def start_dummy_server():
         return web.Response(text="Ziynat HR Anketa Bot is running on Render!", status=200)
 
     app = web.Application()
-    # GET, HEAD, POST so'rovlariga 200 OK qaytaradi
     app.router.add_route("*", "/", handle_ping)
     
     runner = web.AppRunner(app)
@@ -84,7 +86,6 @@ async def post_init(application):
     WORK_DURATION, OVERTIME, HEALTH, ADDITIONAL
 ) = range(30)
 
-# AI tekshiruvi uchun savollar xaritasi (Aniq va ravshan)
 QUESTIONS = {
     POSITION: "Qaysi bo'lim va lavozimga topshiryapsiz",
     FULL_NAME: "Familiya, ism va sharifingiz",
@@ -122,7 +123,7 @@ VAZIFA:
 Foydalanuvchi javobi savolga mantiqan mos keladimi?
 
 MUHIM QOIDALAR:
-1. Agar javob savolga umuman aloqasiz bo'lsa (masalan: so'kish, be’mani belgilardan iborat matn "asdfgh", yoki "shahar" haqidagi savolga "ovqat" deb javob berilgan bo'lsa) -> valid: false.
+1. Agar javob savolga umuman aloqasiz bo'lsa (masalan: so'kish, be'mani belgilardan iborat matn "asdfgh", yoki "shahar" haqidagi savolga "ovqat" deb javob berilgan bo'lsa) -> valid: false.
 2. Oddiy, so'zlashuv tilidagi, qisqa yoki xatolar bilan yozilgan javoblarni ("yomon", "yo'q", "ishlamaganman", "o'rganaman", "uylanmaganman", "xovli") HAMMA VAQT to'g'ri deb qabul qiling -> valid: true.
 3. Foydalanuvchining fikri yoki darajasi (masalan "rus tilim yomon", "tajribam yo'q") uchun e'tiroz bildirmang, buni samimiy javob sifatida qabul qiling -> valid: true.
 
@@ -130,7 +131,8 @@ Faqat JSON formatida javob bering:
 {{"valid": true yoki false, "reason": "agar valid false bo'lsa, qisqa sababini o'zbek tilida yozing"}}"""
 
     try:
-        response = call_gemini_with_fallback(prompt, VALIDATION_MODELS)
+        config = types.GenerateContentConfig(response_mime_type="application/json")
+        response = call_gemini_with_fallback(prompt, VALIDATION_MODELS, config=config)
         text = response.text.strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
@@ -157,7 +159,8 @@ FAQAT ushbu JSON formatida javob bering:
             types.Part.from_bytes(data=bytes(photo_bytes), mime_type='image/jpeg'),
             prompt,
         ]
-        response = call_gemini_with_fallback(contents, VALIDATION_MODELS)
+        config = types.GenerateContentConfig(response_mime_type="application/json")
+        response = call_gemini_with_fallback(contents, VALIDATION_MODELS, config=config)
         text = response.text.strip().lower()
 
         match = re.search(r'\{.*\}', text, re.DOTALL)
@@ -234,9 +237,9 @@ async def process_text_step(
     if question_text:
         result = await validate_answer(question_text, answer)
         if not result.get("valid", True):
-            # Xatolik bo'lganda JORIY savolni ko'rsatadi (CHALKASHMAMLIK UCHUN TUZATILDI)
+            reason_msg = result.get('reason', 'Javob savolga mos emas.')
             await update.message.reply_text(
-                f"⚠️ {result.get('reason', 'Javob savolga mos emas.')}\n\n"
+                f"⚠️ {reason_msg}\n\n"
                 f"Iltimos, ushbu savolga qaytadan javob bering:\n{current_question_prompt}",
                 parse_mode="Markdown"
             )
@@ -259,32 +262,42 @@ async def safe_send_message(bot, chat_id, text, parse_mode="Markdown", reply_mar
 
 async def handle_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
 
     data = query.data
     if data == "done":
+        await query.answer("Ushbu nomzod bo'yicha qaror qabul qilib bo'lingan.")
         return
 
     try:
         action, user_id = data.split("_")
     except ValueError:
+        await query.answer()
         return
 
     if action == "accept":
         new_keyboard = [[InlineKeyboardButton("🟢 QABUL QILINGAN ✅", callback_data="done")]]
         user_msg = "🎉 *Tabriklaymiz!*\n\nSizning anketangiz 'Ziynat' do'koni rahbariyat tomonidan ijobiy baholandi va suhbatga taklif qilinasiz! Tez orada siz bilan bog'lanamiz."
+        alert_text = "✅ Nomzod qabul qilindi. Xabar nomzodga yuborildi."
     elif action == "reject":
         new_keyboard = [[InlineKeyboardButton("🔴 RAD ETILDI ❌", callback_data="done")]]
         user_msg = "Assalomu alaykum.\n\nAfsuski, sizning anketangiz hozirgi vaqtda bizning talablarimizga mos kelmadi. Anketani to'ldirganingiz uchun rahmat, kelgusi ishlaringizda omad tilaymiz!"
+        alert_text = "❌ Nomzod rad etildi. Xabar nomzodga yuborildi."
     else:
+        await query.answer()
         return
 
-    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(new_keyboard))
+    try:
+        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(new_keyboard))
+    except Exception:
+        pass
 
     try:
         await context.bot.send_message(chat_id=int(user_id), text=user_msg, parse_mode="Markdown")
     except Exception as e:
         logging.error(f"Nomzodga qarorni yuborishda xatolik: {e}")
+        alert_text += " (Lekin nomzodga xabar yetmadi)."
+
+    await query.answer(alert_text, show_alert=True)
 
 
 # ==================== HANDLERS ====================
@@ -316,8 +329,9 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
 
     if not result.get("is_person", True):
+        reason_msg = result.get("reason", "Bu rasmda inson yuzi ko'rinmayapti.")
         await update.message.reply_text(
-            f"❌ {result.get('reason', 'Bu rasmda inson yuzi ko\'rinmayapti.')}\n\n"
+            f"❌ {reason_msg}\n\n"
             "Iltimos, yuzingiz aniq ko'ringan haqiqiy suratingizni yuboring:"
         )
         return PHOTO
@@ -544,8 +558,9 @@ async def get_additional(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await validate_answer(question_text, answer)
 
     if not result.get("valid", True):
+        reason_msg = result.get('reason', 'Javob mos emas.')
         await update.message.reply_text(
-            f"⚠️ {result.get('reason', 'Javob mos emas.')}\n\n"
+            f"⚠️ {reason_msg}\n\n"
             "Iltimos, ushbu savolga qaytadan javob bering:\nO'zingiz haqingizda qo'shimcha ma'lumot (kuchli va ijobiy taraflaringiz):\n\n*(Misol: Kirishimli, xushmuomala va tartibni xush ko'raman)*",
             parse_mode="Markdown"
         )
@@ -558,6 +573,8 @@ async def get_additional(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Rahmat! Anketangiz qabul qilindi. Sun'iy intellekt ma'lumotlaringizni tahlil qilmoqda...",
         reply_markup=ReplyKeyboardRemove()
     )
+
+    abroad_details = context.user_data.get('trip_abroad_details', "Yo'q")
 
     summary_text = (
         "📥 *ZIYNAT DO'KONI — YANGI NOMZOD ANKETASI*\n"
