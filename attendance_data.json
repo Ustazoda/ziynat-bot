@@ -161,6 +161,13 @@
         "late": 61,
         "fine": 60000,
         "status": "late"
+      },
+      "abdullayev_12_00": {
+        "name": "abdullayev",
+        "time": "08:25",
+        "late": 25,
+        "fine": 30000,
+        "status": "late"
       }
     }
   },
