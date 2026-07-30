@@ -169,6 +169,26 @@
         "late": 25,
         "fine": 30000,
         "status": "late"
+      },
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "fine": 150000,
+        "status": "absent"
+      },
+      "ganiboyevozodbek": {
+        "name": "Ozodbek",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "wsev7": {
+        "name": "Gulzoda",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "ustazoda0125": {
+        "name": "Asadbek",
+        "fine": 120000,
+        "status": "absent"
       }
     }
   },
