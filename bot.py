@@ -74,14 +74,6 @@ EMPLOYEES = {
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
         "absent": 120000,
     },
-    "muradjanvnam": {
-        "name": "Moxinur",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "19:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
     "ustazoda0125": {
         "name": "Asadbek",
         "work_start": (8, 0),
