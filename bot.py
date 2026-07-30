@@ -1,852 +1,686 @@
 import os
-import json
-import base64
-import datetime
 import logging
-import asyncio
-import aiohttp
-from zoneinfo import ZoneInfo
+import json
+import re
 from aiohttp import web
-
-from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import (
-    InlineKeyboardMarkup, InlineKeyboardButton, BotCommand,
-    BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, FSInputFile
+from google import genai
+from google.genai import types
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, BotCommand, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    ConversationHandler,
+    filters,
 )
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-logging.basicConfig(level=logging.INFO)
+# Logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-# ==========================================================
-# 🕒 VAQT ZONASI — O'zbekiston vaqti (Asia/Tashkent)
-# ==========================================================
-TZ = ZoneInfo("Asia/Tashkent")
+# === SOZLAMALAR ===
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7634467401:AAFiiVFYVFFtk6F3b8TFfhrBFacZVPz2ZTE")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "1168952611"))
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-def now_tz() -> datetime.datetime:
-    return datetime.datetime.now(TZ)
+# Gemini Client
+ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-def is_sunday() -> bool:
-    return now_tz().weekday() == 6
+VALIDATION_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro']
+ANALYSIS_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro']
 
-# ==========================================================
-# 🔑 SOZLAMALAR
-# ==========================================================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8707986524:AAHPsECAqQydGcQ1RzLpA56EfqozRH7Gpr0")
-GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1003993511736"))
-JARIMALAR_THREAD_ID = int(os.getenv("JARIMALAR_THREAD_ID", "55"))
-ISHGA_KELISH_THREAD_ID = int(os.getenv("ISHGA_KELISH_THREAD_ID", "1"))
 
-# 🐙 GITHUB AVTO-SAQLASH SOZLAMALARI
-GITHUB_REPO = "Ustazoda/ziynat-bot"
-GITHUB_FILE_PATH = "attendance_data.json"
-# 👇 Shu yerga 2-qadamda olgan GitHub Tokeningizni qo'yasiz:
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+def call_gemini_with_fallback(contents, models):
+    """Modellarni birma-bir sinab ko'radi."""
+    last_error = None
+    for model_name in models:
+        try:
+            return ai_client.models.generate_content(model=model_name, contents=contents)
+        except Exception as e:
+            last_error = e
+            logging.warning(f"Model '{model_name}' ishlamadi ({e}). Keyingisiga o'tilmoqda...")
+            continue
+    raise last_error
 
-bot = Bot(token=BOT_TOKEN)
 
-BOSS_USERNAMES = {"abduvali94", "abdullayev1200"}
+# === RENDER PORTI VA UPTIMEROBOT UCHUN DUMMY SERVER ===
+async def start_dummy_server():
+    async def handle_ping(request):
+        return web.Response(text="Ziynat HR Anketa Bot is running on Render!", status=200)
 
-EMPLOYEES = {
-    "abdullayev1200": {
-        "name": "Ma'murxon",
-        "work_start": (8, 20),
-        "work_end": (12, 30),
-        "leave_time": "20:30",
-        "rates": [(10, 30000), (30, 50000), (60, 70000), (120, 100000), (270, 150000)],
-        "absent": 150000,
-    },
-    "ganiboyevozodbek": {
-        "name": "Ozodbek",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "21:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
-    "wsev7": {
-        "name": "Gulzoda",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "19:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
-    "muradjanvnam": {
-        "name": "Moxinur",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "19:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
-    "ustazoda0125": {
-        "name": "Asadbek",
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "18:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
-    "muhammad201207": {
-        "name": "Muhammadsodiq",
-        "work_start": (7, 0),
-        "work_end": (12, 30),
-        "leave_time": "21:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 100000,
-    }
+    app = web.Application()
+    # GET, HEAD, POST so'rovlariga 200 OK qaytaradi
+    app.router.add_route("*", "/", handle_ping)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logging.info(f"Render Veb-server {port}-portda ishga tushdi.")
+
+
+# === TELEGRAM MENU TUGMASINI SOZLASH ===
+async def post_init(application):
+    commands = [
+        BotCommand("start", "Anketani boshlash 🚀"),
+        BotCommand("cancel", "Anketani bekor qilish ❌")
+    ]
+    await application.bot.set_my_commands(commands)
+    await start_dummy_server()
+
+
+# === BOSQICHLAR (SAVOLLAR SANI) ===
+(
+    PHOTO, POSITION, FULL_NAME, BIRTH_DATE, NATIONALITY, ADDRESS, HOUSING, PHONE,
+    EDUCATION_LEVEL, EDU_DETAILS, WORK_EXP,
+    VIDEO_SKILLS, EDITING_APPS, SMM_EXP, STORE_DUTIES,
+    TRIP_ABROAD, TRIP_ABROAD_DETAILS, MARITAL_STATUS, FAMILY_MEMBERS, MILITARY_CRIMINAL,
+    LANGUAGES, HOW_HEARD, GUARANTOR, BACKGROUND_CHECK, PREV_SALARY, EXPECTED_SALARY,
+    WORK_DURATION, OVERTIME, HEALTH, ADDITIONAL
+) = range(30)
+
+# AI tekshiruvi uchun savollar xaritasi (Aniq va ravshan)
+QUESTIONS = {
+    POSITION: "Qaysi bo'lim va lavozimga topshiryapsiz",
+    FULL_NAME: "Familiya, ism va sharifingiz",
+    BIRTH_DATE: "Tug'ilgan sanangiz",
+    NATIONALITY: "Millatingiz",
+    ADDRESS: "Doimiy yashash manzilingiz",
+    EDU_DETAILS: "Qachon va qaysi o'quv yurtini tamomlagansiz",
+    WORK_EXP: "Avval qaysi korxona yoki do'konlarda ishlagansiz",
+    VIDEO_SKILLS: "Telefoningizda video ololaysizmi va telefoningiz rusumi",
+    EDITING_APPS: "Videolarni qaysi ilovalarda montaj qilasiz (CapCut va b.)",
+    SMM_EXP: "Instagram va Telegram sahifalarni yuritish hamda mijozlarga javob berish tajribangiz",
+    STORE_DUTIES: "Do'konda tovarlarni joylashtirish va sotuv vazifalarini bajarishga tayyorligingiz",
+    TRIP_ABROAD_DETAILS: "Chet el safarlari tafsiloti",
+    FAMILY_MEMBERS: "Oila a'zolaringiz haqida ma'lumot",
+    MILITARY_CRIMINAL: "Harbiy xizmat va sudlanganlik holatingiz",
+    LANGUAGES: "Qaysi tillarni bilasiz va bilish darajangiz",
+    HOW_HEARD: "Do'konimiz haqida qayerdan eshitdingiz",
+    GUARANTOR: "Sizga kim kafillik yoki tavsiya bera oladi",
+    PREV_SALARY: "Oldingi ish joyingizdagi maoshingiz",
+    EXPECTED_SALARY: "Bizda kutilayotgan maoshingiz",
+    WORK_DURATION: "Do'konimizda qancha muddat ishlamoqchisiz",
+    HEALTH: "Kollektivda ishlash va sog'ligingiz holati",
+    ADDITIONAL: "O'zingiz haqingizda qo'shimcha ma'lumot",
 }
 
-DEFAULT_FINE = {
-    "name": "Xodim",
-    "work_start": (8, 0),
-    "work_end": (12, 30),
-    "leave_time": "18:00",
-    "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-    "absent": 120000,
-}
 
-# ==========================================================
-# 📁 FAYLGA YOZISH VA GITHUB BILAN SINXRONLASH
-# ==========================================================
-DATA_FILE = "attendance_data.json"
+# ==================== YUMSHATILGAN AI VALIDATSIYA ====================
 
-async def push_to_github():
-    """Faylni avtomatik GitHub repository'ga yuklab qo'yish"""
-    if not GITHUB_TOKEN or GITHUB_TOKEN == "ghp_YOUR_GITHUB_TOKEN_HERE":
-        return
+async def validate_answer(question: str, answer: str) -> dict:
+    prompt = f"""Siz "Ziynat" do'koni ishga qabul anketasini tekshiruvchi bag'rikeng va tushunuvchan yordamchisiz.
+Savol: "{question}"
+Foydalanuvchi javobi: "{answer}"
 
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
-    headers = {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
+VAZIFA:
+Foydalanuvchi javobi savolga mantiqan mos keladimi?
+
+MUHIM QOIDALAR:
+1. Agar javob savolga umuman aloqasiz bo'lsa (masalan: so'kish, be’mani belgilardan iborat matn "asdfgh", yoki "shahar" haqidagi savolga "ovqat" deb javob berilgan bo'lsa) -> valid: false.
+2. Oddiy, so'zlashuv tilidagi, qisqa yoki xatolar bilan yozilgan javoblarni ("yomon", "yo'q", "ishlamaganman", "o'rganaman", "uylanmaganman", "xovli") HAMMA VAQT to'g'ri deb qabul qiling -> valid: true.
+3. Foydalanuvchining fikri yoki darajasi (masalan "rus tilim yomon", "tajribam yo'q") uchun e'tiroz bildirmang, buni samimiy javob sifatida qabul qiling -> valid: true.
+
+Faqat JSON formatida javob bering:
+{{"valid": true yoki false, "reason": "agar valid false bo'lsa, qisqa sababini o'zbek tilida yozing"}}"""
 
     try:
-        async with aiohttp.ClientSession() as session:
-            sha = ""
-            async with session.get(url, headers=headers) as resp:
-                if resp.status == 200:
-                    res_data = await resp.json()
-                    sha = res_data.get("sha", "")
-
-            if not os.path.exists(DATA_FILE):
-                return
-
-            with open(DATA_FILE, "rb") as f:
-                content_bytes = f.read()
-                content_b64 = base64.b64encode(content_bytes).decode("utf-8")
-
-            payload = {
-                "message": "🤖 Auto-update attendance_data.json [skip render]",
-                "content": content_b64,
-                "branch": "main"
-            }
-            if sha:
-                payload["sha"] = sha
-
-            async with session.put(url, headers=headers, json=payload) as put_resp:
-                if put_resp.status in [200, 201]:
-                    logging.info("✅ attendance_data.json GitHub'ga muvaffaqiyatli saqlandi!")
-                else:
-                    logging.error(f"❌ GitHub'ga saqlashda xato: {await put_resp.text()}")
+        response = call_gemini_with_fallback(prompt, VALIDATION_MODELS)
+        text = response.text.strip()
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return {"valid": True, "reason": ""}
     except Exception as e:
-        logging.error(f"❌ GitHub sync xatosi: {e}")
+        logging.error(f"Validatsiyada xatolik: {e}")
+        return {"valid": True, "reason": ""}
 
-def load_db() -> dict:
-    if not os.path.exists(DATA_FILE):
-        return {"attendance": {}, "requests": {}}
+
+async def validate_photo(photo_bytes: bytes) -> dict:
+    prompt = """Siz fotosuratlarni tahlil qiluvchi mutaxassisiz.
+Ushbu rasmda INSON YUZI yoki inson qiyofasi ko'rinib turibdimi?
+
+QOIDALAR:
+1. Buyumlar, hujjat, avtomobil, hayvonlar -> "is_person": false
+2. Inson yuzi yoki qiyofasi bo'lsa -> "is_person": true
+
+FAQAT ushbu JSON formatida javob bering:
+{"is_person": true, "reason": "Rasmda inson yuzi ko'rinib turibdi."}"""
+
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if "attendance" not in data:
-                data["attendance"] = {}
-            if "requests" not in data:
-                data["requests"] = {}
-            return data
-    except Exception as e:
-        logging.error(f"Fayl o'qishda xatolik: {e}")
-        return {"attendance": {}, "requests": {}}
+        contents = [
+            types.Part.from_bytes(data=bytes(photo_bytes), mime_type='image/jpeg'),
+            prompt,
+        ]
+        response = call_gemini_with_fallback(contents, VALIDATION_MODELS)
+        text = response.text.strip().lower()
 
-def save_db(data: dict):
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            try:
+                result = json.loads(match.group(0))
+                if "is_person" in result:
+                    return result
+            except Exception:
+                pass
+
+        if "true" in text or "ha" in text or "inson" in text or "yuzi" in text:
+            return {"is_person": True, "reason": "Rasmda inson ko'rinib turibdi."}
+        elif "false" in text or "yo'q" in text:
+            return {"is_person": False, "reason": "Rasmda inson yuzi ko'rinmayapti."}
+
+        return {"is_person": True, "reason": ""}
+
+    except Exception as e:
+        logging.error(f"Rasm validatsiyasida xatolik: {e}")
+        return {"is_person": True, "reason": ""}
+
+
+async def analyze_candidate_with_ai(user_data: dict) -> str:
+    prompt = f"""
+Siz "ZIYNAT" bijuteriya va soatlar do'konining HR menejeri va tajribali analitigisiz.
+Do'konda xodimlar mijozlarga soat va zargarlik buyumlarini sotishi, tovarlarni chiroyli joylashtirishi, mobil telefon orqali video olib, CapCut kabi ilovalarda montaj qilishi hamda Instagram/Telegram'da mijozlar bilan muloqot qilishi kerak.
+
+NOMZOD MA'LUMOTLARI:
+- F.I.Sh va Lavozim: {user_data.get('fullname')} / {user_data.get('position')}
+- Yoshi va Manzili: {user_data.get('birthdate')} / {user_data.get('address')} ({user_data.get('housing')})
+- Tel: {user_data.get('phone')}
+- Ma'lumoti va Ish tajribasi: {user_data.get('education_level')} / {user_data.get('edu_details')} | Tajriba: {user_data.get('work_exp')}
+- 📹 Video olish va Telefon modeli: {user_data.get('video_skills')}
+- 🎬 Montaj ko'nikmalari (CapCut va b.): {user_data.get('editing_apps')}
+- 📱 SMM va Mijozlar bilan muloqot: {user_data.get('smm_exp')}
+- 🛍 Do'kon vazifalariga tayyorligi: {user_data.get('store_duties')}
+- Oilaviy ahvoli va A'zolari: {user_data.get('marital_status')} / {user_data.get('family_members')}
+- Tillar: {user_data.get('languages')}
+- Oldingi va Kutilayotgan maosh: {user_data.get('prev_salary')} / {user_data.get('expected_salary')}
+- Ishlash muddati / Qolib ishlash: {user_data.get('work_duration')} / {user_data.get('overtime')}
+- Kollektiv va Sog'liq: {user_data.get('health')}
+- Qo'shimcha sifatlari: {user_data.get('additional')}
+
+QUYIDAGI MEZONLAR BO'YICHA "ZIYNAT" DO'KONI DIREKTORI UCHUN HR TAHLIL VA TAVSIYA BERING (O'zbek tilida):
+1. **Sotuv va Mijozlar bilan muloqot salohiyati (1-10 ball)**
+2. **Video olish va Montaj (CapCut/SMM) mahorati (1-10 ball)**
+3. **Mas'uliyat va Do'kon vazifalariga tayyorligi**
+4. **Nomzodning kuchli va zaif tomonlari**
+5. **YAKUNIY BAHO VA DIREKTORGA TAVSIYA (1-10 ball)**
+"""
     try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            
-        # Har safar faylga yozilganda, uni GitHub'ga ham saqlash
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(push_to_github())
-        except RuntimeError:
-            pass
+        response = call_gemini_with_fallback(prompt, ANALYSIS_MODELS)
+        return response.text
     except Exception as e:
-        logging.error(f"Faylga yozishda xatolik: {e}")
+        logging.error(f"Gemini AI xatoligi: {e}")
+        return "⚠️ Sun'iy intellekt tahlilida xatolik yuz berdi."
 
-def db_set_record(emp_key: str, record: dict):
-    db = load_db()
-    today_str = now_tz().strftime("%Y-%m-%d")
-    
-    if today_str not in db["attendance"]:
-        db["attendance"][today_str] = {}
-        
-    existing = db["attendance"][today_str].get(emp_key, {})
-    existing.update(record)
-    db["attendance"][today_str][emp_key] = existing
-    save_db(db)
 
-def db_add_bonus(emp_key: str, bonus_amount: int):
-    db = load_db()
-    today_str = now_tz().strftime("%Y-%m-%d")
-    if today_str not in db["attendance"]:
-        db["attendance"][today_str] = {}
-    if emp_key not in db["attendance"][today_str]:
-        db["attendance"][today_str][emp_key] = {}
-        
-    db["attendance"][today_str][emp_key]["bonus"] = bonus_amount
-    save_db(db)
+async def process_text_step(
+    update: Update, 
+    context: ContextTypes.DEFAULT_TYPE, 
+    current_state: int, 
+    field_name: str, 
+    current_question_prompt: str,
+    next_question_prompt: str, 
+    next_state: int, 
+    keyboard=None
+):
+    """Joriy savolni tekshiradi, agar xato bo'lsa JORIY savol matnini qayta beradi."""
+    answer = update.message.text
+    question_text = QUESTIONS.get(current_state, "")
 
-def db_get_today_records() -> dict:
-    db = load_db()
-    today_str = now_tz().strftime("%Y-%m-%d")
-    return db["attendance"].get(today_str, {})
-
-class ExcuseState(StatesGroup):
-    waiting_for_reason = State()
-
-class LateState(StatesGroup):
-    waiting_for_reason = State()
-
-dp = Dispatcher(storage=MemoryStorage())
-scheduler = AsyncIOScheduler(timezone=TZ)
-
-def get_employee(username: str | None, first_name: str = "") -> tuple[str, dict]:
-    if username and username.lower() in EMPLOYEES:
-        return username.lower(), EMPLOYEES[username.lower()]
-    for key, data in EMPLOYEES.items():
-        if data["name"].lower() in (first_name or "").lower():
-            return key, data
-    clean_name = username or first_name or "Xodim"
-    return clean_name.lower(), DEFAULT_FINE
-
-def calculate_fine(employee: dict, minutes_late: int) -> int:
-    rules = employee.get("rates", DEFAULT_FINE["rates"])
-    for limit, price in rules:
-        if minutes_late <= limit:
-            return price
-    return rules[-1][1]
-
-# /id
-@dp.message(Command("id"))
-async def cmd_id(message: types.Message):
-    user = message.from_user
-    thread_info = f"🧵 **Mavzu ID:** `{message.message_thread_id}`\n" if message.message_thread_id else ""
-    await message.answer(
-        f"🆔 **Sizning ID:** `{user.id}`\n"
-        f"👤 **Ism:** {user.full_name}\n"
-        f"🔗 **Username:** @{user.username or 'yoq'}\n"
-        f"💬 **Chat ID:** `{message.chat.id}`\n"
-        f"{thread_info}",
-        parse_mode="Markdown"
-    )
-
-# /start
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer(
-        "Assalomu alaykum! 'Ziynat' do'koni nazorat botiga xush kelibsiz.\n\n"
-        "Buyruqlarni ko'rish uchun yozish joyida `/` belgisini bosing.",
-        parse_mode="Markdown"
-    )
-
-# 📎 /fayl — BARCHA DAVOMAT FAYLINI YUKLAB OLISH
-@dp.message(Command("fayl"))
-async def cmd_get_file(message: types.Message):
-    clicker_username = (message.from_user.username or "").lower()
-    if clicker_username not in BOSS_USERNAMES:
-        await message.answer("❌ Bu buyruq faqat rahbarlar uchun!")
-        return
-        
-    if os.path.exists(DATA_FILE):
-        file = FSInputFile(DATA_FILE)
-        await message.answer_document(file, caption="📁 Barcha kunlik va oylik davomatlar yozilgan JSON fayli.")
-    else:
-        await message.answer("⚠️ Hali fayl yaratilmagan.")
-
-# 🌴 /dam_olish
-@dp.message(Command("dam_olish"))
-async def cmd_dam_olish(message: types.Message):
-    now = now_tz()
-    days = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
-    today_name = days[now.weekday()]
-    
-    if is_sunday():
-        msg = f"🌴 **Bugun {today_name} — Rasmiy dam olish kuni!**\n\nBugun do'konimizda ish kuni emas. Kechikish va jarimalar hisoblanmaydi."
-    else:
-        msg = f"📅 **Bugun {today_name} — Ish kuni.**\n\n📌 Rasmiy dam olish kuni: **Yakshanba**."
-    
-    await message.answer(msg, parse_mode="Markdown")
-
-# 📊 /oylik xisobot
-@dp.message(Command("oylik"))
-async def cmd_monthly_stat(message: types.Message):
-    now = now_tz()
-    month_str = now.strftime("%Y-%m")
-
-    db = load_db()
-    attendance_db = db.get("attendance", {})
-
-    stats = {}
-    for k, v in EMPLOYEES.items():
-        stats[k] = {
-            "name": v["name"],
-            "present": 0,
-            "late_mins": 0,
-            "fine": 0,
-            "bonus": 0,
-            "excused": 0,
-            "absent": 0
-        }
-
-    for date_key, day_records in attendance_db.items():
-        if date_key.startswith(month_str):
-            for emp_key, rec in day_records.items():
-                if emp_key not in stats:
-                    stats[emp_key] = {
-                        "name": rec.get("name", emp_key),
-                        "present": 0,
-                        "late_mins": 0,
-                        "fine": 0,
-                        "bonus": 0,
-                        "excused": 0,
-                        "absent": 0
-                    }
-                st = rec.get("status", "")
-                late = rec.get("late", 0)
-                fine = rec.get("fine", 0)
-                bonus = rec.get("bonus", 0)
-
-                if st in ["on_time", "on_time_approved", "late"]:
-                    stats[emp_key]["present"] += 1
-                    stats[emp_key]["late_mins"] += late
-                    stats[emp_key]["fine"] += fine
-                elif st == "excused_approved":
-                    stats[emp_key]["excused"] += 1
-                elif st in ["excused_rejected", "late_rejected", "absent"]:
-                    stats[emp_key]["absent"] += 1
-                    stats[emp_key]["fine"] += fine
-
-                stats[emp_key]["bonus"] += bonus
-
-    report = f"📊 **{month_str} OYLIK DAVOMAT VA MAOSH HISOBI**\n\n"
-    
-    for key, s in stats.items():
-        net = s["bonus"] - s["fine"]
-        net_str = f"+{net:,}" if net >= 0 else f"{net:,}"
-        report += (
-            f"👤 **{s['name']}** (@{key}):\n"
-            f"  🟢 Ishga kelgan: **{s['present']} kun**\n"
-            f"  🔵 Uzrli kelmagan: **{s['excused']} kun**\n"
-            f"  🔴 Kelmagan/Rad etilgan: **{s['absent']} kun**\n"
-            f"  ⏱ Jami kechikish: **{s['late_mins']} daqiqa**\n"
-            f"  💸 Jami jarima: **{s['fine']:,} so'm**\n"
-            f"  🎁 Jami bonus: **{s['bonus']:,} so'm**\n"
-            f"  ⚖️ **Net balans:** `{net_str} so'm`\n\n"
-        )
-
-    await message.answer(report, parse_mode="Markdown")
-
-# /ketish
-@dp.message(Command("ketish"))
-async def handle_ketish(message: types.Message):
-    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    name = message.from_user.first_name or emp["name"]
-
-    now = now_tz()
-    now_time = now.strftime("%H:%M")
-
-    leave_h, leave_m = map(int, emp["leave_time"].split(":"))
-    leave_dt = now.replace(hour=leave_h, minute=leave_m, second=0, microsecond=0)
-
-    base_text = (
-        f"🚪 **{name}** ishxonadan chiqib ketdi.\n"
-        f"⏰ **Chiqish vaqti:** {now_time}\n"
-        f"📌 *Belgilangan ketish vaqti: {emp['leave_time']}*\n"
-    )
-
-    rec = {"name": name, "left_at": now_time}
-
-    if now > leave_dt:
-        extra_minutes = int((now - leave_dt).total_seconds() / 60)
-        bonus_sum = calculate_fine(emp, extra_minutes)
-        rec["bonus"] = bonus_sum
-        base_text += (
-            f"\n✅ **Qo'shimcha ishlagan vaqt:** {extra_minutes} daqiqa\n"
-            f"🎁 **Bonus miqdori:** {bonus_sum:,} so'm."
-        )
-    else:
-        base_text += "\nℹ️ *Ish vaqti hali tugamagan, shuning uchun bonus qo'llanilmaydi.*"
-
-    # Har doim /ketish bosilganda faylga va GitHub'ga yozish
-    db_set_record(emp_key, rec)
-
-    await message.answer(base_text, parse_mode="Markdown")
-
-# /qaytib_keldim
-@dp.message(Command("qaytib_keldim"))
-async def handle_qaytib_keldim(message: types.Message):
-    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    name = message.from_user.first_name or emp["name"]
-    now_time = now_tz().strftime("%H:%M")
-    await message.answer(
-        f"🔄 **{name}** ishxonaga qaytib keldi.\n"
-        f"⏰ **Qaytish vaqti:** {now_time}",
-        parse_mode="Markdown"
-    )
-
-# 📹 VIDEO NOTE / VIDEO
-@dp.message(F.video | F.video_note)
-async def handle_video(message: types.Message):
-    username = message.from_user.username
-    first_name = message.from_user.first_name or ""
-    emp_key, emp = get_employee(username, first_name)
-    user_name = first_name or emp["name"]
-
-    if is_sunday():
-        await message.answer(
-            f"🌴 **{user_name}**, bugun Yakshanba — rasmiy dam olish kuni!\nVideo qabul qilindi, lekin jarima va kechikishlar hisoblanmaydi.",
-            parse_mode="Markdown"
-        )
-        return
-    
-    now = now_tz()
-    start_h, start_m = emp.get("work_start", (8, 0))
-    end_h, end_m = emp.get("work_end", (12, 30))
-
-    work_start = now.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
-    work_end = now.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
-
-    if now > work_end:
-        await message.answer(
-            f"⛔ **{user_name}**, soat {end_h:02d}:{end_m:02d} dan o'tdi. Video qabul qilish to'xtatilgan!",
-            parse_mode="Markdown"
-        )
-        return
-
-    time_str = now.strftime("%H:%M")
-    records = db_get_today_records()
-
-    if emp_key in records and records[emp_key].get("status") == "late_approved":
-        allowed_until = records[emp_key].get("until_time", f"{end_h:02d}:{end_m:02d}")
-        ah, am = map(int, allowed_until.split(":"))
-        allowed_dt = now.replace(hour=ah, minute=am, second=0, microsecond=0)
-        
-        if now <= allowed_dt:
-            rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time_approved", "until_time": allowed_until}
-            db_set_record(emp_key, rec)
-            await message.answer(
-                f"✅ Baraka toping, **{user_name}**!\n"
-                f"Ruxsat berilgan vaqtda ({time_str} da) keldingiz. Jarima qo'llanilmaydi.",
+    if question_text:
+        result = await validate_answer(question_text, answer)
+        if not result.get("valid", True):
+            # Xatolik bo'lganda JORIY savolni ko'rsatadi (CHALKASHMAMLIK UCHUN TUZATILDI)
+            await update.message.reply_text(
+                f"⚠️ {result.get('reason', 'Javob savolga mos emas.')}\n\n"
+                f"Iltimos, ushbu savolga qaytadan javob bering:\n{current_question_prompt}",
                 parse_mode="Markdown"
             )
-            return
-        else:
-            late_mins = int((now - allowed_dt).total_seconds() / 60)
-            fine_sum = calculate_fine(emp, late_mins)
-            rec = {"name": user_name, "time": time_str, "late": late_mins, "fine": fine_sum, "status": "late"}
-            db_set_record(emp_key, rec)
-            await message.answer(
-                f"⚠️ **{user_name}**, siz ruxsat berilgan vaqtdan ({allowed_until}) {late_mins} daqiqa kechikdingiz!\n"
-                f"💸 **Jarima miqdori:** {fine_sum:,} so'm.",
-                parse_mode="Markdown"
-            )
-            return
+            return current_state
 
-    if now <= work_start:
-        rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time"}
-        db_set_record(emp_key, rec)
-        await message.answer(
-            f"✅ Baraka toping, **{user_name}**!\nIshga o'z vaqtida keldingiz. (Vaqt: {time_str})",
-            parse_mode="Markdown"
-        )
+    context.user_data[field_name] = answer
+    reply_markup = keyboard if keyboard else ReplyKeyboardRemove()
+    await update.message.reply_text(next_question_prompt, reply_markup=reply_markup, parse_mode="Markdown")
+    return next_state
+
+
+async def safe_send_message(bot, chat_id, text, parse_mode="Markdown", reply_markup=None):
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode, reply_markup=reply_markup)
+    except Exception:
+        await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+
+
+# ==================== TUGMALAR VA QAROR QABUL QILISH ====================
+
+async def handle_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if data == "done":
         return
-
-    late_minutes = int((now - work_start).total_seconds() / 60)
-    fine_sum = calculate_fine(emp, late_minutes)
-    
-    rec = {"name": user_name, "time": time_str, "late": late_minutes, "fine": fine_sum, "status": "late"}
-    db_set_record(emp_key, rec)
-    
-    await message.answer(
-        f"⚠️ **{user_name}**, siz bugun {late_minutes} daqiqa kechikdingiz. (Kelgan vaqtingiz: {time_str})\n"
-        f"💸 **Jarima miqdori:** {fine_sum:,} so'm.",
-        parse_mode="Markdown"
-    )
-
-# ✍️ /sabab — ILTIMOSNOMA
-@dp.message(Command("sabab"))
-async def start_excuse(message: types.Message, state: FSMContext):
-    if is_sunday():
-        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Iltimosnoma yuborish shart emas!", parse_mode="Markdown")
-        return
-
-    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    now = now_tz()
-    start_h, start_m = emp.get("work_start", (8, 0))
-    work_start = now.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
-
-    if now >= work_start:
-        await message.answer(
-            f"⛔ **Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!**\n\n"
-            f"Sababli kelolmaslik haqidagi iltimosnoma faqat ish boshlanishidan oldin yuborilishi mumkin.",
-            parse_mode="Markdown"
-        )
-        return
-
-    warning_text = (
-        "⚠️ **DIQQAT! SABABLI ISHGA KELOLMASLIK BO'YICHA ILTIMOSNOMA**\n\n"
-        "Iltimos, ishga kelolmasligingiz sababini **juda jiddiy yondashib, to'liq va tushunarli** holatda yozing.\n\n"
-        "✍️ **Sababingizni ushbu mavzuga yozib yuboring:**"
-    )
-    warning_msg = await message.answer(warning_text, parse_mode="Markdown")
-    await state.update_data(warning_msg_id=warning_msg.message_id, warning_chat_id=warning_msg.chat.id)
-    await state.set_state(ExcuseState.waiting_for_reason)
-
-@dp.message(ExcuseState.waiting_for_reason)
-async def send_excuse_to_group(message: types.Message, state: FSMContext):
-    user_name = message.from_user.first_name or "Xodim"
-    username = message.from_user.username or ""
-    emp_key, _ = get_employee(username, user_name)
-    reason_text = message.text
-
-    state_data = await state.get_data()
-    if state_data.get("warning_msg_id"):
-        try:
-            await bot.delete_message(chat_id=state_data["warning_chat_id"], message_id=state_data["warning_msg_id"])
-        except Exception:
-            pass
-
-    req_id = f"exc_{int(datetime.datetime.now().timestamp())}"
-    
-    approve_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Roziman", callback_data=f"sabab_a_{req_id}"),
-            InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"sabab_r_{req_id}")
-        ]
-    ])
-    
-    group_msg = (
-        f"📩 **YANGI ILTIMOSNOMA (Sababli kelolmaslik)**\n\n"
-        f"👤 **Xodim:** {user_name} (@{username})\n"
-        f"📝 **Sababi:** {reason_text}\n\n"
-        f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
-    )
-
-    db = load_db()
-    db["requests"][req_id] = {
-        "req_type": "sabab",
-        "emp_key": emp_key,
-        "emp_name": user_name,
-        "username": username,
-        "reason": reason_text,
-        "until_time": "",
-        "status": "pending"
-    }
-    save_db(db)
-
-    await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="Markdown")
-    await state.clear()
-
-# ⏰ /kech_qolish
-time_picker_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="08:30", callback_data="time_08:30"), InlineKeyboardButton(text="09:00", callback_data="time_09:00"), InlineKeyboardButton(text="09:30", callback_data="time_09:30")],
-    [InlineKeyboardButton(text="10:00", callback_data="time_10:00"), InlineKeyboardButton(text="10:30", callback_data="time_10:30"), InlineKeyboardButton(text="11:00", callback_data="time_11:00")],
-    [InlineKeyboardButton(text="11:30", callback_data="time_11:30"), InlineKeyboardButton(text="12:00", callback_data="time_12:00")]
-])
-
-@dp.message(Command("kech_qolish"))
-async def start_late_request(message: types.Message, state: FSMContext):
-    if is_sunday():
-        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Kechikishga ruxsat so'rash shart emas!", parse_mode="Markdown")
-        return
-
-    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    now = now_tz()
-    start_h, start_m = emp.get("work_start", (8, 0))
-    work_start = now.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
-
-    if now >= work_start:
-        await message.answer(
-            f"⛔ **Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!**\n\n"
-            f"Kechikishga ruxsat so'rash faqat ish boshlanishidan oldin mumkin.",
-            parse_mode="Markdown"
-        )
-        return
-
-    msg = await message.answer(
-        "⏰ **KECHIKISHGA RUXSAT SO'RASH**\n\n"
-        "Iltimos, bugun soat **nechagacha kechikishingizni** pastdagi tugmalar orqali tanlang:",
-        reply_markup=time_picker_keyboard,
-        parse_mode="Markdown"
-    )
-    await state.update_data(warning_msg_id=msg.message_id, warning_chat_id=msg.chat.id)
-
-@dp.callback_query(F.data.startswith("time_"))
-async def handle_time_selection(callback: types.CallbackQuery, state: FSMContext):
-    selected_time = callback.data.split("_")[1]
-    await state.update_data(selected_time=selected_time)
-    await callback.message.edit_text(
-        f"⏰ Belgilangan vaqt: **{selected_time}**\n\n"
-        f"✍️ Endi kechikishingiz **sababini batafsil va jiddiy** yozib yuboring:",
-        parse_mode="Markdown"
-    )
-    await state.set_state(LateState.waiting_for_reason)
-    await callback.answer()
-
-@dp.message(LateState.waiting_for_reason)
-async def send_late_request_to_group(message: types.Message, state: FSMContext):
-    user_name = message.from_user.first_name or "Xodim"
-    username = message.from_user.username or ""
-    emp_key, _ = get_employee(username, user_name)
-    reason_text = message.text
-    
-    data = await state.get_data()
-    selected_time = data.get("selected_time", "10:00")
-
-    if data.get("warning_msg_id"):
-        try:
-            await bot.delete_message(chat_id=data["warning_chat_id"], message_id=data["warning_msg_id"])
-        except Exception:
-            pass
-
-    req_id = f"late_{int(datetime.datetime.now().timestamp())}"
-
-    approve_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Roziman", callback_data=f"late_a_{req_id}"),
-            InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"late_r_{req_id}")
-        ]
-    ])
-    
-    group_msg = (
-        f"⏰ **YANGI ILTIMOSNOMA (Kech qolishga ruxsat)**\n\n"
-        f"👤 **Xodim:** {user_name} (@{username})\n"
-        f"🕒 **Kutilayotgan kelish vaqti:** {selected_time} gacha\n"
-        f"📝 **Sababi:** {reason_text}\n\n"
-        f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
-    )
-    
-    db = load_db()
-    db["requests"][req_id] = {
-        "req_type": "late",
-        "emp_key": emp_key,
-        "emp_name": user_name,
-        "username": username,
-        "reason": reason_text,
-        "until_time": selected_time,
-        "status": "pending"
-    }
-    save_db(db)
-
-    await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="Markdown")
-    await state.clear()
-
-# 👑 RAHBARLAR QARORLARI
-@dp.callback_query(F.data.startswith("sabab_") | F.data.startswith("late_"))
-async def handle_boss_decisions(callback: types.CallbackQuery):
-    clicker_username = (callback.from_user.username or "").lower()
-    
-    if clicker_username not in BOSS_USERNAMES:
-        await callback.answer("❌ Sizda bu qarorni qabul qilish huquqi yo'q! Qarorni faqat Abduvali yoki Ma'murxon beradi.", show_alert=True)
-        return
-
-    parts = callback.data.split("_")
-    category = parts[0]   # 'sabab' or 'late'
-    action = parts[1]     # 'a' (approve) or 'r' (reject)
-    req_id = "_".join(parts[2:]) if len(parts) > 2 else ""
-
-    boss_name = callback.from_user.first_name or "Rahbar"
-
-    db = load_db()
-    req_data = db.get("requests", {}).get(req_id)
-
-    if not req_data:
-        await callback.answer("⚠️ So'rov topilmadi yoki allaqachon ko'rib chiqilgan.", show_alert=True)
-        return
-
-    emp_key = req_data["emp_key"]
-    emp_name = req_data["emp_name"]
-    emp_username = req_data["username"]
-    reason = req_data["reason"]
-    until_time = req_data["until_time"]
-
-    if category == "sabab":
-        if action == "a":
-            rec = {"name": emp_name, "status": "excused_approved", "boss": boss_name, "reason": reason}
-            db_set_record(emp_key, rec)
-            public_msg = (
-                f"✅ **SABABLI ISHGA KELOLMASLIK (RUXSAT BERILDI)**\n\n"
-                f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"👑 **Qaror beruvchi:** {boss_name}\n"
-                f"📌 **Natija:** *Uzrli sabab deb topildi. Bugun jarima qo'llanilmaydi.*"
-            )
-            await callback.answer("✅ Iltimosnoma tasdiqlandi.", show_alert=True)
-        else:
-            rec = {"name": emp_name, "status": "excused_rejected", "boss": boss_name, "reason": reason}
-            db_set_record(emp_key, rec)
-            public_msg = (
-                f"❌ **SABABLI ISHGA KELOLMASLIK (RAD ETILDI)**\n\n"
-                f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"👑 **Qaror beruvchi:** {boss_name}\n"
-                f"📌 **Natija:** *Sabab yetarsiz deb topildi. Belgilangan jarima qo'llaniladi.*"
-            )
-            await callback.answer("❌ Iltimosnoma rad etildi.", show_alert=True)
-
-    elif category == "late":
-        if action == "a":
-            rec = {"name": emp_name, "status": "late_approved", "until_time": until_time, "boss": boss_name, "reason": reason}
-            db_set_record(emp_key, rec)
-            public_msg = (
-                f"✅ **KECHIKISHGA RUXSAT BERILDI**\n\n"
-                f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"⏰ **Ruxsat berilgan vaqt:** Soat {until_time} gacha\n"
-                f"👑 **Qaror beruvchi:** {boss_name}\n"
-                f"📌 **Natija:** *{until_time} gacha kelib video tashlasa jarima yozilmaydi.*"
-            )
-            await callback.answer(f"✅ {until_time} gacha ruxsat berildi.", show_alert=True)
-        else:
-            rec = {"name": emp_name, "status": "late_rejected", "until_time": until_time, "boss": boss_name, "reason": reason}
-            db_set_record(emp_key, rec)
-            public_msg = (
-                f"❌ **KECHIKISHGA RUXSAT BERILMADI**\n\n"
-                f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"⏰ **So'ralgan vaqt:** {until_time}\n"
-                f"👑 **Qaror beruvchi:** {boss_name}\n"
-                f"📌 **Natija:** *Standard kechikish jarimasi qo'llaniladi.*"
-            )
-            await callback.answer("❌ Kechikish rad etildi.", show_alert=True)
-
-    db["requests"][req_id]["status"] = "approved" if action == "a" else "rejected"
-    save_db(db)
 
     try:
-        updated_card = callback.message.text + f"\n\n📌 **HUKM:** {'✅ TASDIQLANDI' if action == 'a' else '❌ RAD ETILDI'} ({boss_name})"
-        await callback.message.edit_text(updated_card, parse_mode="Markdown")
+        action, user_id = data.split("_")
+    except ValueError:
+        return
+
+    if action == "accept":
+        new_keyboard = [[InlineKeyboardButton("🟢 QABUL QILINGAN ✅", callback_data="done")]]
+        user_msg = "🎉 *Tabriklaymiz!*\n\nSizning anketangiz 'Ziynat' do'koni rahbariyat tomonidan ijobiy baholandi va suhbatga taklif qilinasiz! Tez orada siz bilan bog'lanamiz."
+    elif action == "reject":
+        new_keyboard = [[InlineKeyboardButton("🔴 RAD ETILDI ❌", callback_data="done")]]
+        user_msg = "Assalomu alaykum.\n\nAfsuski, sizning anketangiz hozirgi vaqtda bizning talablarimizga mos kelmadi. Anketani to'ldirganingiz uchun rahmat, kelgusi ishlaringizda omad tilaymiz!"
+    else:
+        return
+
+    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(new_keyboard))
+
+    try:
+        await context.bot.send_message(chat_id=int(user_id), text=user_msg, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Nomzodga qarorni yuborishda xatolik: {e}")
+
+
+# ==================== HANDLERS ====================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Assalomu alaykum! 'Ziynat' bijuteriya va soatlar do'koni ishga qabul anketasiga xush kelibsiz. ✨\n\n"
+        "📸 Iltimos, anketaga biriktirish uchun o'zingizning rasmingizni yuboring:\n"
+        "*(Yuzingiz aniq ko'ringan tushunarli rasm yuboring)*",
+        parse_mode="Markdown"
+    )
+    return PHOTO
+
+
+async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.photo:
+        await update.message.reply_text("⚠️ Rasm yuborish majburiy! Iltimos, faqat o'zingizning rasmingizni yuboring.")
+        return PHOTO
+
+    photo_file = await update.message.photo[-1].get_file()
+    photo_bytes = await photo_file.download_as_bytearray()
+
+    checking_msg = await update.message.reply_text("⏳ Rasmingiz tekshirilmoqda...")
+    result = await validate_photo(photo_bytes)
+
+    try:
+        await checking_msg.delete()
     except Exception:
         pass
 
-    await bot.send_message(
-        chat_id=GROUP_CHAT_ID,
-        text=public_msg,
-        message_thread_id=ISHGA_KELISH_THREAD_ID,
+    if not result.get("is_person", True):
+        await update.message.reply_text(
+            f"❌ {result.get('reason', 'Bu rasmda inson yuzi ko\'rinmayapti.')}\n\n"
+            "Iltimos, yuzingiz aniq ko'ringan haqiqiy suratingizni yuboring:"
+        )
+        return PHOTO
+
+    context.user_data['photo'] = update.message.photo[-1].file_id
+
+    await update.message.reply_text(
+        "Qaysi bo'lim va lavozimga topshiryapsiz?\n\n*(Misol: Do'kon sotuvchisi va kontent-menejer)*", 
         parse_mode="Markdown"
     )
+    return POSITION
 
-# 📊 SOAT 12:31 DAGI KUNLIK HISOBOT
-async def check_absentees_1231():
-    if is_sunday():
-        await bot.send_message(
-            chat_id=GROUP_CHAT_ID,
-            text="🌴 **BUGUN YAKSHANBA (DAM OLISH KUNI)**\n\nBugun do'konimizda ish kuni emas, shuning uchun davomat va jarimalar hisoblanmadi. Barchaga maroqli dam olish tilaymiz!",
-            message_thread_id=JARIMALAR_THREAD_ID,
+
+async def get_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, POSITION, 'position',
+        "Qaysi bo'lim va lavozimga topshiryapsiz?\n\n*(Misol: Do'kon sotuvchisi va kontent-menejer)*",
+        "Familiya, ism va sharifingizni kiriting:\n\n*(Misol: Abdullayeva Dilnoza Karim qizi)*",
+        FULL_NAME
+    )
+
+async def get_fullname(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, FULL_NAME, 'fullname',
+        "Familiya, ism va sharifingizni kiriting:\n\n*(Misol: Abdullayeva Dilnoza Karim qizi)*",
+        "Tug'ilgan sanangizni kiriting:\n\n*(Misol: 15.05.2001)*",
+        BIRTH_DATE
+    )
+
+async def get_birthdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, BIRTH_DATE, 'birthdate',
+        "Tug'ilgan sanangizni kiriting:\n\n*(Misol: 15.05.2001)*",
+        "Millatingizni kiriting:\n\n*(Misol: O'zbek)*",
+        NATIONALITY
+    )
+
+async def get_nationality(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, NATIONALITY, 'nationality',
+        "Millatingizni kiriting:\n\n*(Misol: O'zbek)*",
+        "Doimiy yashash joyingiz (propiska manzilingiz):\n\n*(Misol: Toshkent sh., Chilonzor tumani, 5-mavze)*",
+        ADDRESS
+    )
+
+async def get_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = ReplyKeyboardMarkup([["Hovli", "Dom"]], resize_keyboard=True, one_time_keyboard=True)
+    context.user_data['address'] = update.message.text
+    await update.message.reply_text("Yashash sharoitingizni tanlang:", reply_markup=keyboard)
+    return HOUSING
+
+async def get_housing(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['housing'] = update.message.text
+    reply_keyboard = [[KeyboardButton("📱 Telefon raqamni yuborish", request_contact=True)]]
+    await update.message.reply_text("Shaxsiy mobil telefon raqamingizni yuboring:", reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, one_time_keyboard=True))
+    return PHONE
+
+async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    phone = update.message.contact.phone_number if update.message.contact else update.message.text
+    context.user_data['phone'] = phone
+    keyboard = ReplyKeyboardMarkup([["Oliy", "O'rta maxsus", "O'rta"]], resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text("Ma'lumotingiz darajasi:", reply_markup=keyboard)
+    return EDUCATION_LEVEL
+
+async def get_education_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['education_level'] = update.message.text
+    await update.message.reply_text("Qachon va qaysi o'quv yurtini tamomlagansiz?\n\n*(Misol: 2022-yil, Toshkent Moliya Instituti)*", reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
+    return EDU_DETAILS
+
+async def get_edudetails(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, EDU_DETAILS, 'edu_details',
+        "Qachon va qaysi o'quv yurtini tamomlagansiz?\n\n*(Misol: 2022-yil, Toshkent Moliya Instituti)*",
+        "Avval qaysi korxona yoki do'konlarda va qanday lavozimda ishlagansiz?\n\n*(Misol: 2023-yil, 'X' kiyim do'konida sotuvchi bo'lib 1 yil ishlaganman)*",
+        WORK_EXP
+    )
+
+async def get_workexp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, WORK_EXP, 'work_exp',
+        "Avval qaysi korxona yoki do'konlarda va qanday lavozimda ishlagansiz?\n\n*(Misol: 2023-yil, 'X' kiyim do'konida sotuvchi bo'lib 1 yil ishlaganman)*",
+        "📱 Telefoningizda sifatli video ololaysizmi va qaysi rusumdagi telefondan foydalanasiz?\n\n*(Misol: Ha, video olaman. Telefonim iPhone 13 / Samsung S21)*",
+        VIDEO_SKILLS
+    )
+
+async def get_video_skills(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, VIDEO_SKILLS, 'video_skills',
+        "📱 Telefoningizda sifatli video ololaysizmi va qaysi rusumdagi telefondan foydalanasiz?\n\n*(Misol: Ha, video olaman. Telefonim iPhone 13 / Samsung S21)*",
+        "🎬 Videolarni qaysi ilovalarda montaj qilasiz va qaysi birida yaxshi ishlay olasiz?\n\n*(Misol: CapCut, InShot, VN. CapCut dasturida juda yaxshi montaj qilaman)*",
+        EDITING_APPS
+    )
+
+async def get_editing_apps(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, EDITING_APPS, 'editing_apps',
+        "🎬 Videolarni qaysi ilovalarda montaj qilasiz va qaysi birida yaxshi ishlay olasiz?\n\n*(Misol: CapCut, InShot, VN. CapCut dasturida juda yaxshi montaj qilaman)*",
+        "💬 Instagram va Telegram'ga video joylash hamda mijozlar xabarlariga (DM/Comment) javob berish tajribangiz bormi?\n\n*(Misol: Ha, avvalgi do'konda sahifani yuritganman / Yo'q, lekin tez o'rganib olaman)*",
+        SMM_EXP
+    )
+
+async def get_smm_exp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, SMM_EXP, 'smm_exp',
+        "💬 Instagram va Telegram'ga video joylash hamda mijozlar xabarlariga (DM/Comment) javob berish tajribangiz bormi?\n\n*(Misol: Ha, avvalgi do'konda sahifani yuritganman / Yo'q, lekin tez o'rganib olaman)*",
+        "🛍 Do'konda tovarlarni (soat/bijuteriya) chiroyli joylashtirish, mijozlar bilan muloqot qilish va video olish vazifalarini bajara olasizmi?\n\n*(Misol: Ha, barcha vazifalarni mas'uliyat bilan bajara olaman)*",
+        STORE_DUTIES
+    )
+
+async def get_store_duties(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['store_duties'] = update.message.text
+    keyboard = ReplyKeyboardMarkup([["Ha", "Yo'q"]], resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text("Chet el safariga chiqqanmisiz?", reply_markup=keyboard)
+    return TRIP_ABROAD
+
+async def get_trip_abroad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    context.user_data['trip_abroad'] = text
+    if text.strip().lower() == "ha":
+        await update.message.reply_text("Chet elga qachon, qayerga va nima sababdan chiqqansiz?\n\n*(Misol: 2022-yil Turkiyaga vaqtinchalik sayohatga)*", reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
+        return TRIP_ABROAD_DETAILS
+    else:
+        context.user_data['trip_abroad_details'] = "Yo'q"
+        keyboard = ReplyKeyboardMarkup([["Turmush qurgan", "Turmush qurmagan"]], resize_keyboard=True, one_time_keyboard=True)
+        await update.message.reply_text("Oilaviy ahvolingiz:", reply_markup=keyboard)
+        return MARITAL_STATUS
+
+async def get_trip_abroad_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = ReplyKeyboardMarkup([["Turmush qurgan", "Turmush qurmagan"]], resize_keyboard=True, one_time_keyboard=True)
+    return await process_text_step(
+        update, context, TRIP_ABROAD_DETAILS, 'trip_abroad_details',
+        "Chet elga qachon, qayerga va nima sababdan chiqqansiz?\n\n*(Misol: 2022-yil Turkiyaga vaqtinchalik sayohatga)*",
+        "Oilaviy ahvolingiz:",
+        MARITAL_STATUS,
+        keyboard=keyboard
+    )
+
+async def get_marital_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['marital_status'] = update.message.text
+    await update.message.reply_text("Oila a'zolaringiz haqida ma'lumot bering:\n\n*(Misol: Otam - tadbirkor, Onam - uy bekasi)*", reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
+    return FAMILY_MEMBERS
+
+async def get_family_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, FAMILY_MEMBERS, 'family_members',
+        "Oila a'zolaringiz haqida ma'lumot bering:\n\n*(Misol: Otam - tadbirkor, Onam - uy bekasi)*",
+        "Harbiy xizmat va sudlanganlik holatingiz haqida yozing:\n\n*(Misol: Harbiyda bo'lmaganman / Sudlanmaganman)*",
+        MILITARY_CRIMINAL
+    )
+
+async def get_military_criminal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, MILITARY_CRIMINAL, 'military_criminal',
+        "Harbiy xizmat va sudlanganlik holatingiz haqida yozing:\n\n*(Misol: Harbiyda bo'lmaganman / Sudlanmaganman)*",
+        "Qaysi tillarni bilasiz va qaysi darajada?\n\n*(Misol: O'zbek tili - a'lo, Rus tili - so'zlashuv darajasida)*",
+        LANGUAGES
+    )
+
+async def get_languages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, LANGUAGES, 'languages',
+        "Qaysi tillarni bilasiz va qaysi darajada?\n\n*(Misol: O'zbek tili - a'lo, Rus tili - so'zlashuv darajasida)*",
+        "Bizning 'Ziynat' do'konimiz haqida qayerdan eshitdingiz?\n\n*(Misol: Telegram kanaldan / Tanishim tavsiya qildi)*",
+        HOW_HEARD
+    )
+
+async def get_how_heard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, HOW_HEARD, 'how_heard',
+        "Bizning 'Ziynat' do'konimiz haqida qayerdan eshitdingiz?\n\n*(Misol: Telegram kanaldan / Tanishim tavsiya qildi)*",
+        "Sizga kim kafillik yoki tavsiya bera oladi?\n\n*(Misol: Oxirgi ish joyimdagi rahbarim: Aliyev Vali, +998901234567)*",
+        GUARANTOR
+    )
+
+async def get_guarantor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['guarantor'] = update.message.text
+    keyboard = ReplyKeyboardMarkup([["Ha", "Yo'q"]], resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text("Oxirgi ish joyingizdan siz haqida surishtirishimizga rozimisiz?", reply_markup=keyboard)
+    return BACKGROUND_CHECK
+
+async def get_background_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['background_check'] = update.message.text
+    await update.message.reply_text("Oldingi ish joyingizdagi maoshingiz qancha edi?\n\n*(Misol: 3.500.000 so'm)*", reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
+    return PREV_SALARY
+
+async def get_prev_salary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, PREV_SALARY, 'prev_salary',
+        "Oldingi ish joyingizdagi maoshingiz qancha edi?\n\n*(Misol: 3.500.000 so'm)*",
+        "Bizda qancha miqdordagi maoshga ishlamoqchisiz?\n\n*(Misol: 4.500.000 - 5.000.000 so'm)*",
+        EXPECTED_SALARY
+    )
+
+async def get_expected_salary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, EXPECTED_SALARY, 'expected_salary',
+        "Bizda qancha miqdordagi maoshga ishlamoqchisiz?\n\n*(Misol: 4.500.000 - 5.000.000 so'm)*",
+        "Bizning do'konda qancha muddat ishlamoqchisiz?\n\n*(Misol: 1 yildan ortiq / Doimiy)*",
+        WORK_DURATION
+    )
+
+async def get_work_duration(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['work_duration'] = update.message.text
+    keyboard = ReplyKeyboardMarkup([["Ha", "Yo'q"]], resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text("Ishdan keyin qolib ishlash (overtime) va majlislarga rozimisiz?", reply_markup=keyboard)
+    return OVERTIME
+
+async def get_overtime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['overtime'] = update.message.text
+    await update.message.reply_text("Kollektivda ishlash ko'nikmangiz va sog'ligingiz holati haqida yozing:\n\n*(Misol: Sog'lig'im joyida, jamoada yaxshi kirishaman)*", reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
+    return HEALTH
+
+async def get_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await process_text_step(
+        update, context, HEALTH, 'health',
+        "Kollektivda ishlash ko'nikmangiz va sog'ligingiz holati haqida yozing:\n\n*(Misol: Sog'lig'im joyida, jamoada yaxshi kirishaman)*",
+        "O'zingiz haqingizda qo'shimcha ma'lumot (kuchli va ijobiy taraflaringiz):\n\n*(Misol: Kirishimli, xushmuomala va tartibni xush ko'raman)*",
+        ADDITIONAL
+    )
+
+async def get_additional(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    answer = update.message.text
+    question_text = QUESTIONS.get(ADDITIONAL, "")
+    result = await validate_answer(question_text, answer)
+
+    if not result.get("valid", True):
+        await update.message.reply_text(
+            f"⚠️ {result.get('reason', 'Javob mos emas.')}\n\n"
+            "Iltimos, ushbu savolga qaytadan javob bering:\nO'zingiz haqingizda qo'shimcha ma'lumot (kuchli va ijobiy taraflaringiz):\n\n*(Misol: Kirishimli, xushmuomala va tartibni xush ko'raman)*",
             parse_mode="Markdown"
         )
-        return
+        return ADDITIONAL
 
-    records = db_get_today_records()
-    present_text = []
-    absent_text = []
-    total_fine = 0
-    
-    for key, data in EMPLOYEES.items():
-        if key in records:
-            rec = records[key]
-            st = rec["status"]
-            
-            if st == "on_time":
-                present_text.append(f"🟢 **{data['name']}** — {rec['time']} da keldi (O'z vaqtida)")
-            elif st == "on_time_approved":
-                present_text.append(f"🟢 **{data['name']}** — {rec['time']} da keldi (Ruxsat berilgan vaqtda kelgan)")
-            elif st == "late":
-                present_text.append(f"🟡 **{data['name']}** — {rec['time']} da keldi ({rec['late']} daqiqa kechikdi, Jarima: {rec['fine']:,} so'm)")
-                total_fine += rec["fine"]
-            elif st == "excused_approved":
-                present_text.append(f"🔵 **{data['name']}** — Sababli kelmadi ({rec.get('boss', 'Rahbar')} tomonidan RUXSAT BERILGAN)")
-            elif st == "excused_rejected":
-                fine = data["absent"]
-                absent_text.append(f"🔴 **{data['name']}** — Kelmadi (Ruxsat so'ralgan, lekin {rec.get('boss', 'Rahbar')} tomonidan RAD ETILGAN. Jarima: {fine:,} so'm)")
-                total_fine += fine
-            elif st == "late_approved":
-                fine = data["absent"]
-                absent_text.append(f"🔴 **{data['name']}** — {rec.get('until_time', '12:30')} gacha ruxsat olgan edi, lekin kelmadi (Jarima: {fine:,} so'm)")
-                total_fine += fine
-            elif st == "late_rejected":
-                fine = data["absent"]
-                absent_text.append(f"🔴 **{data['name']}** — Kechikish so'ragan, lekin RAD ETILGAN va kelmadi (Jarima: {fine:,} so'm)")
-                total_fine += fine
-        else:
-            fine = data["absent"]
-            absent_text.append(f"🔴 **{data['name']}** (@{key}) — Kelmadi (Jarima: {fine:,} so'm)")
-            total_fine += fine
-            db_set_record(key, {"name": data["name"], "fine": fine, "status": "absent"})
+    context.user_data['additional'] = answer
+    user_id = update.message.from_user.id
 
-    report = f"📊 **SOAT 12:31 KUNLIK DAVOMAT VA JARIMALAR HISOBOTI**\n\n"
-    
-    if present_text:
-        report += "✅ **Ishga kelganlar va ruxsat olganlar:**\n" + "\n".join(present_text) + "\n\n"
-    else:
-        report += "⚠️ **Bugun hech kim ishga kelmadi!**\n\n"
-        
-    if absent_text:
-        report += "❌ **Ishga kelmaganlar:**\n" + "\n".join(absent_text) + "\n\n"
-        
-    report += f"💸 **Bugungi jami belgilanayotgan jarima:** {total_fine:,} so'm."
-
-    await bot.send_message(
-        chat_id=GROUP_CHAT_ID,
-        text=report,
-        message_thread_id=JARIMALAR_THREAD_ID,
-        parse_mode="Markdown"
+    await update.message.reply_text(
+        "Rahmat! Anketangiz qabul qilindi. Sun'iy intellekt ma'lumotlaringizni tahlil qilmoqda...",
+        reply_markup=ReplyKeyboardRemove()
     )
 
-# 🌐 RENDER VEB-SERVER
-async def start_dummy_server():
-    app = web.Application()
-    app.router.add_get("/", lambda r: web.Response(text="Ziynat Nazorat Bot is running 24/7 on Render!"))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 8080))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
+    summary_text = (
+        "📥 *ZIYNAT DO'KONI — YANGI NOMZOD ANKETASI*\n"
+        "====================================\n\n"
+        "📌 *1. SHAXSIY MA'LUMOTLAR:*\n"
+        f"🎯 *Lavozim:* {context.user_data.get('position')}\n"
+        f"👤 *F.I.Sh:* {context.user_data.get('fullname')}\n"
+        f"🎂 *Tug'ilgan sanasi:* {context.user_data.get('birthdate')}\n"
+        f"🇺🇿 *Millati:* {context.user_data.get('nationality')}\n"
+        f"🏠 *Manzil:* {context.user_data.get('address')} ({context.user_data.get('housing')})\n"
+        f"📞 *Tel:* {context.user_data.get('phone')}\n\n"
 
-async def main():
-    await start_dummy_server()
+        "📌 *2. MA'LUMOTI VA ISH TAJRIBASI:*\n"
+        f"🎓 *Ma'lumoti:* {context.user_data.get('education_level')} ({context.user_data.get('edu_details')})\n"
+        f"💼 *Ish tajribasi:* {context.user_data.get('work_exp')}\n\n"
 
-    commands = [
-        BotCommand(command="kech_qolish", description="⏰ Kech qolishga ruxsat so'rash"),
-        BotCommand(command="sabab", description="✍️ Kelolmaslik iltimosnomasi"),
-        BotCommand(command="ketish", description="🚪 Ishxonadan chiqib ketish"),
-        BotCommand(command="qaytib_keldim", description="🔄 Ishxonaga qaytib kelish"),
-        BotCommand(command="oylik", description="📊 Oylik davomat va maosh hisobi"),
-        BotCommand(command="dam_olish", description="🌴 Dam olish kuni haqida ma'lumot"),
-        BotCommand(command="fayl", description="📎 Barcha davomat faylini yuklab olish"),
-        BotCommand(command="id", description="🆔 ID ma'lumotlarini ko'rish"),
-        BotCommand(command="start", description="🤖 Botni qayta ishga tushirish")
-    ]
-    
-    await bot.set_my_commands(commands, scope=BotCommandScopeAllGroupChats())
-    await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
-    
-    scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31)
-    
-    scheduler.start()
-    await bot.delete_webhook(drop_pending_updates=True)
-    
-    print("🤖 Ziynat Nazorat Boti (GitHub Avto-Saqlash bilan) muvaffaqiyatli ishga tushdi...")
-    await dp.start_polling(bot)
+        "📌 *3. VIDEO, MONTAJ VA SMM (TALABLAR):*\n"
+        f"📹 *Video olish / Telefon:* {context.user_data.get('video_skills')}\n"
+        f"🎬 *Montaj (CapCut va b.):* {context.user_data.get('editing_apps')}\n"
+        f"💬 *Instagram/Telegram/Mijozlar:* {context.user_data.get('smm_exp')}\n"
+        f"🛍 *Do'kon vazifalariga tayyorligi:* {context.user_data.get('store_duties')}\n\n"
+
+        "📌 *4. OILAVIY VA SHAXSIY HUDUD:*\n"
+        f"💍 *Oilaviy ahvoli:* {context.user_data.get('marital_status')}\n"
+        f"👨‍👩‍👧‍👦 *Oila a'zolari:* {context.user_data.get('family_members')}\n"
+        f"🎖 *Harbiy xizmat/Sudlanganlik:* {context.user_data.get('military_criminal')}\n"
+        f"🌐 *Tillar:* {context.user_data.get('languages')}\n"
+        f"📢 *Manba:* {context.user_data.get('how_heard')}\n"
+        f"🤝 *Kafillik/Tavsiya:* {context.user_data.get('guarantor')}\n"
+        f"🔍 *Surishtirishga roziligi:* {context.user_data.get('background_check')}\n\n"
+
+        "📌 *5. SHAROITLAR VA TALABLAR:*\n"
+        f"💵 *Oldingi / Kutilayotgan maosh:* {context.user_data.get('prev_salary')} / {context.user_data.get('expected_salary')}\n"
+        f"⏳ *Ishlash muddati:* {context.user_data.get('work_duration')}\n"
+        f"⏰ *Overtime va majlislar:* {context.user_data.get('overtime')}\n"
+        f"🏥 *Kollektiv va Sog'lig'i:* {context.user_data.get('health')}\n"
+        f"📝 *Qo'shimcha:* {context.user_data.get('additional')}\n"
+    )
+
+    ai_analysis = await analyze_candidate_with_ai(context.user_data)
+    ai_report_text = (
+        "🤖 *GEMINI AI — HR TAHLIL VA BAHOSI*\n"
+        "------------------------------------\n"
+        f"{ai_analysis}"
+    )
+
+    decision_keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Qabul qilish (Suhbatga)", callback_data=f"accept_{user_id}"),
+            InlineKeyboardButton("❌ Rad etish", callback_data=f"reject_{user_id}")
+        ]
+    ])
+
+    try:
+        photo = context.user_data.get('photo')
+        if photo:
+            await context.bot.send_photo(
+                chat_id=ADMIN_ID,
+                photo=photo,
+                caption=f"📥 *YANGI NOMZOD:* {context.user_data.get('fullname')}\n🎯 *Lavozim:* {context.user_data.get('position')}",
+                parse_mode="Markdown"
+            )
+
+        await safe_send_message(context.bot, ADMIN_ID, summary_text)
+        await safe_send_message(context.bot, ADMIN_ID, ai_report_text, reply_markup=decision_keyboard)
+
+    except Exception as e:
+        logging.error(f"Adminga yuborishda xatolik: {e}")
+
+    return ConversationHandler.END
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Anketa bekor qilindi.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            PHOTO: [MessageHandler(filters.PHOTO, get_photo), MessageHandler(filters.TEXT & ~filters.COMMAND, get_photo)],
+            POSITION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_position)],
+            FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_fullname)],
+            BIRTH_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_birthdate)],
+            NATIONALITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_nationality)],
+            ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_address)],
+            HOUSING: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_housing)],
+            PHONE: [MessageHandler(filters.CONTACT, get_phone), MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
+            EDUCATION_LEVEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_education_level)],
+            EDU_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_edudetails)],
+            WORK_EXP: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_workexp)],
+            VIDEO_SKILLS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_video_skills)],
+            EDITING_APPS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_editing_apps)],
+            SMM_EXP: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_smm_exp)],
+            STORE_DUTIES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_store_duties)],
+            TRIP_ABROAD: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_trip_abroad)],
+            TRIP_ABROAD_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_trip_abroad_details)],
+            MARITAL_STATUS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_marital_status)],
+            FAMILY_MEMBERS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_family_members)],
+            MILITARY_CRIMINAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_military_criminal)],
+            LANGUAGES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_languages)],
+            HOW_HEARD: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_how_heard)],
+            GUARANTOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_guarantor)],
+            BACKGROUND_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_background_check)],
+            PREV_SALARY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_prev_salary)],
+            EXPECTED_SALARY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_expected_salary)],
+            WORK_DURATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_work_duration)],
+            OVERTIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_overtime)],
+            HEALTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_health)],
+            ADDITIONAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_additional)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(handle_decision))
+
+    print("Ziynat Do'koni Anketa Boti va Gemini AI ishga tushdi...")
+    app.run_polling()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
