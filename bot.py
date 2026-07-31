@@ -38,7 +38,7 @@ def is_sunday() -> bool:
 # ==========================================================
 # 🔑 SOZLAMALAR
 # ==========================================================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8707986524:AAHwd0zGZzSA63KvdnBUVwA8uHPSf93RRR4")
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1003993511736"))
 JARIMALAR_THREAD_ID = int(os.getenv("JARIMALAR_THREAD_ID", "55"))
 ISHGA_KELISH_THREAD_ID = int(os.getenv("ISHGA_KELISH_THREAD_ID", "1"))
@@ -360,7 +360,7 @@ async def cmd_dam_olish(message: types.Message):
     
     await message.answer(msg, parse_mode="HTML")
 
-# 📊 /oylik (XAVFSIZ HTML FORMATIDA)
+# 📊 /oylik
 @dp.message(Command("oylik"))
 async def cmd_monthly_stat(message: types.Message):
     now = now_tz()
@@ -430,7 +430,11 @@ async def cmd_monthly_stat(message: types.Message):
             f"  ⚖️ <b>Net balans:</b> <code>{net_str} so'm</code>\n\n"
         )
 
-    await message.answer(report, parse_mode="HTML")
+    try:
+        await message.answer(report, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"HTML hisobotda xato: {e}")
+        await message.answer(report)
 
 # /ketish
 @dp.message(Command("ketish"))
@@ -895,6 +899,13 @@ async def on_startup(bot: Bot) -> None:
     if not BASE_WEBHOOK_URL:
         logging.error("❌ BASE_WEBHOOK_URL aniqlanmadi!")
         return
+
+    # 🤖 Bot o'zining username'ini xotiraga yuklaydi (@ziynat_nazorat_bot bo'lib kelganda ham ishlashi uchun)
+    try:
+        bot_info = await bot.get_me()
+        logging.info(f"🤖 Bot ma'lumotlari yuklandi: @{bot_info.username}")
+    except Exception as e:
+        logging.error(f"Bot info yuklashda xato: {e}")
 
     webhook_url = f"{BASE_WEBHOOK_URL}{WEBHOOK_PATH}"
     await bot.set_webhook(url=webhook_url, secret_token=WEBHOOK_SECRET)
