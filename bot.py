@@ -38,7 +38,7 @@ def is_sunday() -> bool:
 # ==========================================================
 # 🔑 SOZLAMALAR
 # ==========================================================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8707986524:AAHwd0zGZzSA63KvdnBUVwA8uHPSf93RRR4")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1003993511736"))
 JARIMALAR_THREAD_ID = int(os.getenv("JARIMALAR_THREAD_ID", "55"))
 ISHGA_KELISH_THREAD_ID = int(os.getenv("ISHGA_KELISH_THREAD_ID", "1"))
