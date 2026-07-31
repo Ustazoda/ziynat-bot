@@ -4,6 +4,7 @@ import base64
 import datetime
 import logging
 import asyncio
+import signal
 import aiohttp
 from zoneinfo import ZoneInfo
 from aiohttp import web
@@ -167,7 +168,7 @@ def save_db(data: dict):
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-            
+
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(push_to_github())
@@ -179,10 +180,10 @@ def save_db(data: dict):
 def db_set_record(emp_key: str, record: dict):
     db = load_db()
     today_str = now_tz().strftime("%Y-%m-%d")
-    
+
     if today_str not in db["attendance"]:
         db["attendance"][today_str] = {}
-        
+
     existing = db["attendance"][today_str].get(emp_key, {})
     existing.update(record)
     db["attendance"][today_str][emp_key] = existing
@@ -195,7 +196,7 @@ def db_add_bonus(emp_key: str, bonus_amount: int):
         db["attendance"][today_str] = {}
     if emp_key not in db["attendance"][today_str]:
         db["attendance"][today_str][emp_key] = {}
-        
+
     db["attendance"][today_str][emp_key]["bonus"] = bonus_amount
     save_db(db)
 
@@ -259,7 +260,7 @@ async def cmd_get_file(message: types.Message):
     if clicker_username not in BOSS_USERNAMES:
         await message.answer("❌ Bu buyruq faqat rahbarlar uchun!")
         return
-        
+
     if os.path.exists(DATA_FILE):
         file = FSInputFile(DATA_FILE)
         await message.answer_document(file, caption="📁 Barcha kunlik va oylik davomatlar yozilgan JSON fayli.")
@@ -272,12 +273,12 @@ async def cmd_dam_olish(message: types.Message):
     now = now_tz()
     days = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
     today_name = days[now.weekday()]
-    
+
     if is_sunday():
         msg = f"🌴 **Bugun {today_name} — Rasmiy dam olish kuni!**\n\nBugun do'konimizda ish kuni emas. Kechikish va jarimalar hisoblanmaydi."
     else:
         msg = f"📅 **Bugun {today_name} — Ish kuni.**\n\n📌 Rasmiy dam olish kuni: **Yakshanba**."
-    
+
     await message.answer(msg, parse_mode="Markdown")
 
 # 📊 /oylik
@@ -332,7 +333,7 @@ async def cmd_monthly_stat(message: types.Message):
                 stats[emp_key]["bonus"] += bonus
 
     report = f"📊 **{month_str} OYLIK DAVOMAT VA MAOSH HISOBI**\n\n"
-    
+
     for key, s in stats.items():
         net = s["bonus"] - s["fine"]
         net_str = f"+{net:,}" if net >= 0 else f"{net:,}"
@@ -409,7 +410,7 @@ async def handle_video(message: types.Message):
             parse_mode="Markdown"
         )
         return
-    
+
     now = now_tz()
     start_h, start_m = emp.get("work_start", (8, 0))
     end_h, end_m = emp.get("work_end", (12, 30))
@@ -431,7 +432,7 @@ async def handle_video(message: types.Message):
         allowed_until = records[emp_key].get("until_time", f"{end_h:02d}:{end_m:02d}")
         ah, am = map(int, allowed_until.split(":"))
         allowed_dt = now.replace(hour=ah, minute=am, second=0, microsecond=0)
-        
+
         if now <= allowed_dt:
             rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time_approved", "until_time": allowed_until}
             db_set_record(emp_key, rec)
@@ -464,10 +465,10 @@ async def handle_video(message: types.Message):
 
     late_minutes = int((now - work_start).total_seconds() / 60)
     fine_sum = calculate_fine(emp, late_minutes)
-    
+
     rec = {"name": user_name, "time": time_str, "late": late_minutes, "fine": fine_sum, "status": "late"}
     db_set_record(emp_key, rec)
-    
+
     await message.answer(
         f"⚠️ **{user_name}**, siz bugun {late_minutes} daqiqa kechikdingiz. (Kelgan vaqtingiz: {time_str})\n"
         f"💸 **Jarima miqdori:** {fine_sum:,} so'm.",
@@ -518,14 +519,14 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
             pass
 
     req_id = f"exc_{int(datetime.datetime.now().timestamp())}"
-    
+
     approve_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Roziman", callback_data=f"sabab_a_{req_id}"),
             InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"sabab_r_{req_id}")
         ]
     ])
-    
+
     group_msg = (
         f"📩 **YANGI ILTIMOSNOMA (Sababli kelolmaslik)**\n\n"
         f"👤 **Xodim:** {user_name} (@{username})\n"
@@ -600,7 +601,7 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
     username = message.from_user.username or ""
     emp_key, _ = get_employee(username, user_name)
     reason_text = message.text
-    
+
     data = await state.get_data()
     selected_time = data.get("selected_time", "10:00")
 
@@ -618,7 +619,7 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
             InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"late_r_{req_id}")
         ]
     ])
-    
+
     group_msg = (
         f"⏰ **YANGI ILTIMOSNOMA (Kech qolishga ruxsat)**\n\n"
         f"👤 **Xodim:** {user_name} (@{username})\n"
@@ -626,7 +627,7 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
         f"📝 **Sababi:** {reason_text}\n\n"
         f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
     )
-    
+
     db = load_db()
     db["requests"][req_id] = {
         "req_type": "late",
@@ -646,7 +647,7 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("sabab_") | F.data.startswith("late_"))
 async def handle_boss_decisions(callback: types.CallbackQuery):
     clicker_username = (callback.from_user.username or "").lower()
-    
+
     if clicker_username not in BOSS_USERNAMES:
         await callback.answer("❌ Sizda bu qarorni qabul qilish huquqi yo'q! Qarorni faqat Abduvali yoki Ma'murxon beradi.", show_alert=True)
         return
@@ -748,12 +749,12 @@ async def check_absentees_1231():
     present_text = []
     absent_text = []
     total_fine = 0
-    
+
     for key, data in EMPLOYEES.items():
         if key in records:
             rec = records[key]
             st = rec["status"]
-            
+
             if st == "on_time":
                 present_text.append(f"🟢 **{data['name']}** — {rec['time']} da keldi (O'z vaqtida)")
             elif st == "on_time_approved":
@@ -782,17 +783,17 @@ async def check_absentees_1231():
             db_set_record(key, {"name": data["name"], "fine": fine, "status": "absent"})
 
     report = "📊 **SOAT 12:31 KUNLIK DAVOMAT VA JARIMALAR HISOBOTI**\n\n"
-    
+
     if present_text:
         present_str = "\n".join(present_text)
         report += f"✅ **Ishga kelganlar va ruxsat olganlar:**\n{present_str}\n\n"
     else:
         report += "⚠️ **Bugun hech kim ishga kelmadi!**\n\n"
-        
+
     if absent_text:
         absent_str = "\n".join(absent_text)
         report += f"❌ **Ishga kelmaganlar:**\n{absent_str}\n\n"
-        
+
     report += f"💸 **Bugungi jami belgilanayotgan jarima:** {total_fine:,} so'm."
 
     await bot.send_message(
@@ -812,6 +813,12 @@ async def start_dummy_server():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
+# ==========================================================
+# 🛑 XAVFSIZ TO'XTATISH (GRACEFUL SHUTDOWN)
+# Bu qism Render qayta-deploy qilganda ESKI instansiyani
+# darhol to'xtatib, Telegram'dagi getUpdates bandligini
+# bo'shatib beradi — shu orqali "Conflict" xatoligi oldini oladi.
+# ==========================================================
 async def main():
     await start_dummy_server()
 
@@ -826,17 +833,61 @@ async def main():
         BotCommand(command="id", description="🆔 ID ma'lumotlarini ko'rish"),
         BotCommand(command="start", description="🤖 Botni qayta ishga tushirish")
     ]
-    
+
     await bot.set_my_commands(commands, scope=BotCommandScopeAllGroupChats())
     await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
-    
+
     scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31)
-    
     scheduler.start()
+
     await bot.delete_webhook(drop_pending_updates=True)
-    
+
+    # SIGTERM/SIGINT kelganda pollingni darhol to'xtatish uchun signal handler
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+
+    def _request_stop():
+        logging.info("🛑 To'xtatish signali qabul qilindi (Render redeploy yoki manual stop)...")
+        stop_event.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, _request_stop)
+        except NotImplementedError:
+            # Windows kabi ba'zi platformalarda signal handlerlar qo'llab-quvvatlanmaydi
+            pass
+
     print("🤖 Ziynat Nazorat Boti muvaffaqiyatli ishga tushdi...")
-    await dp.start_polling(bot)
+
+    polling_task = asyncio.create_task(dp.start_polling(bot))
+
+    # Ikkalasidan qaysi biri birinchi bo'lsa (polling o'zi to'xtasa yoki signal kelsa)
+    done, pending = await asyncio.wait(
+        {polling_task, asyncio.create_task(stop_event.wait())},
+        return_when=asyncio.FIRST_COMPLETED
+    )
+
+    if not polling_task.done():
+        polling_task.cancel()
+        try:
+            await polling_task
+        except asyncio.CancelledError:
+            pass
+
+    for task in pending:
+        task.cancel()
+
+    logging.info("🧹 Resurslarni tozalash: scheduler va bot sessiyasi yopilmoqda...")
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception:
+        pass
+    try:
+        await bot.session.close()
+    except Exception:
+        pass
+
+    logging.info("✅ Bot xavfsiz to'xtatildi.")
 
 if __name__ == "__main__":
     asyncio.run(main())
