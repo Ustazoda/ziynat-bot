@@ -191,6 +191,15 @@
         "fine": 120000,
         "status": "absent"
       }
+    },
+    "2026-07-31": {
+      "groupanonymousbot": {
+        "name": "Group",
+        "time": "07:44",
+        "late": 0,
+        "fine": 0,
+        "status": "on_time"
+      }
     }
   },
   "requests": {
