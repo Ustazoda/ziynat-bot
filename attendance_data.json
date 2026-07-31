@@ -240,7 +240,8 @@
       "ustazoda0125": {
         "name": "Asadbek",
         "fine": 120000,
-        "status": "absent"
+        "status": "absent",
+        "left_at": "13:51"
       }
     }
   },
