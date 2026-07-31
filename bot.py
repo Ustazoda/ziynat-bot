@@ -1,6 +1,7 @@
 import os
 import json
 import base64
+import re
 import datetime
 import logging
 import asyncio
@@ -37,7 +38,7 @@ def is_sunday() -> bool:
 # ==========================================================
 # 🔑 SOZLAMALAR
 # ==========================================================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8707986524:AAF0tby_NWvgLCxBIkofyHL3nE-Tce-EELE")
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1003993511736"))
 JARIMALAR_THREAD_ID = int(os.getenv("JARIMALAR_THREAD_ID", "55"))
 ISHGA_KELISH_THREAD_ID = int(os.getenv("ISHGA_KELISH_THREAD_ID", "1"))
@@ -51,23 +52,18 @@ bot = Bot(token=BOT_TOKEN)
 
 # ==========================================================
 # 🌐 WEBHOOK SOZLAMALARI
-# Render "Web Service" turidagi xizmatlar uchun RENDER_EXTERNAL_URL
-# degan environment variable'ni avtomatik o'zi o'rnatadi
-# (masalan: https://ziynat-bot.onrender.com). Shuning uchun
-# qo'lda hech narsa sozlash shart emas.
 # ==========================================================
 BASE_WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("WEBHOOK_BASE_URL", "")
 WEBHOOK_PATH = "/webhook"
-# Har bir instansiya ishga tushganda o'z-o'zidan tasodifiy maxfiy token yaratiladi.
-# Xohlasangiz Render Environment'da WEBHOOK_SECRET nomli o'zgaruvchi qo'shib,
-# uni doimiy qilib belgilashingiz ham mumkin (majburiy emas).
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET") or secrets.token_urlsafe(32)
 
-BOSS_USERNAMES = {"abduvali94", "abdullayev1200"}
+BOSS_USERNAMES = {"abduvali94", "abdullayev1200", "abdullayev_12_00"}
 
+# 👥 XODIMLAR VA ULARNING BARCHA USERNAME/ALIAS VARIANTLARI
 EMPLOYEES = {
     "abdullayev1200": {
         "name": "Ma'murxon",
+        "aliases": ["abdullayev1200", "abdullayev_12_00", "abdullayev", "mamurxon", "ma'murxon"],
         "work_start": (8, 20),
         "work_end": (12, 30),
         "leave_time": "20:30",
@@ -76,6 +72,7 @@ EMPLOYEES = {
     },
     "ganiboyevozodbek": {
         "name": "Ozodbek",
+        "aliases": ["ganiboyevozodbek", "ganiboyev_ozodbek", "ozodbek", "𓈆1%"],
         "work_start": (8, 0),
         "work_end": (12, 30),
         "leave_time": "21:00",
@@ -84,6 +81,16 @@ EMPLOYEES = {
     },
     "wsev7": {
         "name": "Gulzoda",
+        "aliases": ["wsev7", "gulzoda", "𝓰𝓾𝓵𝔃𝓸𝓭𝓪🤍"],
+        "work_start": (8, 0),
+        "work_end": (12, 30),
+        "leave_time": "19:00",
+        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
+        "absent": 120000,
+    },
+    "muradjanvnam": {
+        "name": "Moxinur",
+        "aliases": ["muradjanvnam", "muradjanvna_m", "moxinur", "ℳ"],
         "work_start": (8, 0),
         "work_end": (12, 30),
         "leave_time": "19:00",
@@ -92,6 +99,7 @@ EMPLOYEES = {
     },
     "ustazoda0125": {
         "name": "Asadbek",
+        "aliases": ["ustazoda0125", "asadbek"],
         "work_start": (8, 0),
         "work_end": (12, 30),
         "leave_time": "18:00",
@@ -100,6 +108,7 @@ EMPLOYEES = {
     },
     "muhammad201207": {
         "name": "Muhammadsodiq",
+        "aliases": ["muhammad201207", "umarov777777777", "muhammadsodiq"],
         "work_start": (7, 0),
         "work_end": (12, 30),
         "leave_time": "21:00",
@@ -118,12 +127,44 @@ DEFAULT_FINE = {
 }
 
 # ==========================================================
-# 📁 FAYLGA YOZISH VA GITHUB BILAN SINXRONLASH
+# 📁 FAYLGA YOZISH VA GITHUB SINXRONIZATSIYASI
 # ==========================================================
 DATA_FILE = "attendance_data.json"
 
+def clean_str(text: str | None) -> str:
+    if not text:
+        return ""
+    return re.sub(r'[^a-zA-Z0-9]', '', str(text)).lower()
+
+def get_employee(username: str | None, first_name: str = "") -> tuple[str, dict]:
+    uname = (username or "").lower()
+    fname = (first_name or "").lower()
+    clean_u = clean_str(uname)
+    clean_f = clean_str(fname)
+
+    if uname == "groupanonymousbot" or fname == "group":
+        return "groupanonymousbot", DEFAULT_FINE
+
+    # 1. Aniq username yoki alias mosligi
+    for key, data in EMPLOYEES.items():
+        if uname == key or uname in data.get("aliases", []):
+            return key, data
+
+    # 2. Tozalangan matn mosligi
+    for key, data in EMPLOYEES.items():
+        aliases = [clean_str(a) for a in data.get("aliases", [])]
+        aliases.append(clean_str(key))
+        aliases.append(clean_str(data["name"]))
+        
+        if clean_u and any(clean_u == a or (len(clean_u) > 3 and clean_u in a) for a in aliases if a):
+            return key, data
+        if clean_f and any(clean_f == a or (len(clean_f) > 3 and clean_f in a) for a in aliases if a):
+            return key, data
+
+    clean_name = username or first_name or "Xodim"
+    return clean_name.lower(), DEFAULT_FINE
+
 async def push_to_github():
-    """Faylni avtomatik GitHub repository'ga yuklab qo'yish"""
     if not GITHUB_TOKEN or GITHUB_TOKEN == "ghp_YOUR_GITHUB_TOKEN_HERE":
         return
 
@@ -183,7 +224,7 @@ def save_db(data: dict):
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-
+            
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(push_to_github())
@@ -193,29 +234,60 @@ def save_db(data: dict):
         logging.error(f"Faylga yozishda xatolik: {e}")
 
 def db_set_record(emp_key: str, record: dict):
+    if emp_key == "groupanonymousbot":
+        return
+
+    canonical_key, emp_data = get_employee(emp_key, record.get("name", ""))
+    if canonical_key == "groupanonymousbot":
+        return
+
     db = load_db()
     today_str = now_tz().strftime("%Y-%m-%d")
-
+    
     if today_str not in db["attendance"]:
         db["attendance"][today_str] = {}
-
-    existing = db["attendance"][today_str].get(emp_key, {})
+        
+    existing = db["attendance"][today_str].get(canonical_key, {})
     existing.update(record)
-    db["attendance"][today_str][emp_key] = existing
+    existing["name"] = emp_data["name"]
+    db["attendance"][today_str][canonical_key] = existing
     save_db(db)
 
-def db_add_bonus(emp_key: str, bonus_amount: int):
+def db_clean_today_records():
+    """Bugungi saqlangan ma'lumotlardagi dublikatlar va anonim kalitlarni birlashtirish"""
     db = load_db()
     today_str = now_tz().strftime("%Y-%m-%d")
-    if today_str not in db["attendance"]:
-        db["attendance"][today_str] = {}
-    if emp_key not in db["attendance"][today_str]:
-        db["attendance"][today_str][emp_key] = {}
+    if today_str not in db.get("attendance", {}):
+        return
 
-    db["attendance"][today_str][emp_key]["bonus"] = bonus_amount
+    day_data = db["attendance"][today_str]
+    cleaned_day = {}
+
+    for raw_key, rec in day_data.items():
+        if raw_key == "groupanonymousbot":
+            continue
+            
+        canonical_key, emp_data = get_employee(raw_key, rec.get("name", ""))
+        if canonical_key == "groupanonymousbot":
+            continue
+
+        rec["name"] = emp_data["name"]
+
+        if canonical_key not in cleaned_day:
+            cleaned_day[canonical_key] = rec
+        else:
+            existing_st = cleaned_day[canonical_key].get("status", "")
+            new_st = rec.get("status", "")
+            if existing_st == "absent" and new_st != "absent":
+                cleaned_day[canonical_key] = rec
+            elif new_st != "absent":
+                cleaned_day[canonical_key].update(rec)
+
+    db["attendance"][today_str] = cleaned_day
     save_db(db)
 
 def db_get_today_records() -> dict:
+    db_clean_today_records()
     db = load_db()
     today_str = now_tz().strftime("%Y-%m-%d")
     return db["attendance"].get(today_str, {})
@@ -228,15 +300,6 @@ class LateState(StatesGroup):
 
 dp = Dispatcher(storage=MemoryStorage())
 scheduler = AsyncIOScheduler(timezone=TZ)
-
-def get_employee(username: str | None, first_name: str = "") -> tuple[str, dict]:
-    if username and username.lower() in EMPLOYEES:
-        return username.lower(), EMPLOYEES[username.lower()]
-    for key, data in EMPLOYEES.items():
-        if data["name"].lower() in (first_name or "").lower():
-            return key, data
-    clean_name = username or first_name or "Xodim"
-    return clean_name.lower(), DEFAULT_FINE
 
 def calculate_fine(employee: dict, minutes_late: int) -> int:
     rules = employee.get("rates", DEFAULT_FINE["rates"])
@@ -268,14 +331,14 @@ async def cmd_start(message: types.Message):
         parse_mode="Markdown"
     )
 
-# 📎 /fayl — BARCHA DAVOMAT FAYLINI YUKLAB OLISH
+# 📎 /fayl
 @dp.message(Command("fayl"))
 async def cmd_get_file(message: types.Message):
     clicker_username = (message.from_user.username or "").lower()
     if clicker_username not in BOSS_USERNAMES:
         await message.answer("❌ Bu buyruq faqat rahbarlar uchun!")
         return
-
+        
     if os.path.exists(DATA_FILE):
         file = FSInputFile(DATA_FILE)
         await message.answer_document(file, caption="📁 Barcha kunlik va oylik davomatlar yozilgan JSON fayli.")
@@ -288,12 +351,12 @@ async def cmd_dam_olish(message: types.Message):
     now = now_tz()
     days = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
     today_name = days[now.weekday()]
-
+    
     if is_sunday():
         msg = f"🌴 **Bugun {today_name} — Rasmiy dam olish kuni!**\n\nBugun do'konimizda ish kuni emas. Kechikish va jarimalar hisoblanmaydi."
     else:
         msg = f"📅 **Bugun {today_name} — Ish kuni.**\n\n📌 Rasmiy dam olish kuni: **Yakshanba**."
-
+    
     await message.answer(msg, parse_mode="Markdown")
 
 # 📊 /oylik
@@ -319,10 +382,16 @@ async def cmd_monthly_stat(message: types.Message):
 
     for date_key, day_records in attendance_db.items():
         if date_key.startswith(month_str):
-            for emp_key, rec in day_records.items():
-                if emp_key not in stats:
-                    stats[emp_key] = {
-                        "name": rec.get("name", emp_key),
+            for raw_key, rec in day_records.items():
+                if raw_key == "groupanonymousbot":
+                    continue
+                canonical_key, emp_data = get_employee(raw_key, rec.get("name", ""))
+                if canonical_key == "groupanonymousbot":
+                    continue
+
+                if canonical_key not in stats:
+                    stats[canonical_key] = {
+                        "name": emp_data["name"],
                         "present": 0,
                         "late_mins": 0,
                         "fine": 0,
@@ -330,25 +399,26 @@ async def cmd_monthly_stat(message: types.Message):
                         "excused": 0,
                         "absent": 0
                     }
+
                 st = rec.get("status", "")
                 late = rec.get("late", 0)
                 fine = rec.get("fine", 0)
                 bonus = rec.get("bonus", 0)
 
                 if st in ["on_time", "on_time_approved", "late"]:
-                    stats[emp_key]["present"] += 1
-                    stats[emp_key]["late_mins"] += late
-                    stats[emp_key]["fine"] += fine
+                    stats[canonical_key]["present"] += 1
+                    stats[canonical_key]["late_mins"] += late
+                    stats[canonical_key]["fine"] += fine
                 elif st == "excused_approved":
-                    stats[emp_key]["excused"] += 1
+                    stats[canonical_key]["excused"] += 1
                 elif st in ["excused_rejected", "late_rejected", "absent"]:
-                    stats[emp_key]["absent"] += 1
-                    stats[emp_key]["fine"] += fine
+                    stats[canonical_key]["absent"] += 1
+                    stats[canonical_key]["fine"] += fine
 
-                stats[emp_key]["bonus"] += bonus
+                stats[canonical_key]["bonus"] += bonus
 
     report = f"📊 **{month_str} OYLIK DAVOMAT VA MAOSH HISOBI**\n\n"
-
+    
     for key, s in stats.items():
         net = s["bonus"] - s["fine"]
         net_str = f"+{net:,}" if net >= 0 else f"{net:,}"
@@ -369,7 +439,9 @@ async def cmd_monthly_stat(message: types.Message):
 @dp.message(Command("ketish"))
 async def handle_ketish(message: types.Message):
     emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    name = message.from_user.first_name or emp["name"]
+    if emp_key == "groupanonymousbot":
+        await message.answer("⚠️ Iltimos, shaxsiy Telegram profilingizdan yozing (Anonim rejim o'chiq bo'lsin).")
+        return
 
     now = now_tz()
     now_time = now.strftime("%H:%M")
@@ -378,12 +450,12 @@ async def handle_ketish(message: types.Message):
     leave_dt = now.replace(hour=leave_h, minute=leave_m, second=0, microsecond=0)
 
     base_text = (
-        f"🚪 **{name}** ishxonadan chiqib ketdi.\n"
+        f"🚪 **{emp['name']}** ishxonadan chiqib ketdi.\n"
         f"⏰ **Chiqish vaqti:** {now_time}\n"
         f"📌 *Belgilangan ketish vaqti: {emp['leave_time']}*\n"
     )
 
-    rec = {"name": name, "left_at": now_time}
+    rec = {"name": emp["name"], "left_at": now_time}
 
     if now > leave_dt:
         extra_minutes = int((now - leave_dt).total_seconds() / 60)
@@ -403,7 +475,7 @@ async def handle_ketish(message: types.Message):
 @dp.message(Command("qaytib_keldim"))
 async def handle_qaytib_keldim(message: types.Message):
     emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    name = message.from_user.first_name or emp["name"]
+    name = emp["name"]
     now_time = now_tz().strftime("%H:%M")
     await message.answer(
         f"🔄 **{name}** ishxonaga qaytib keldi.\n"
@@ -417,7 +489,12 @@ async def handle_video(message: types.Message):
     username = message.from_user.username
     first_name = message.from_user.first_name or ""
     emp_key, emp = get_employee(username, first_name)
-    user_name = first_name or emp["name"]
+    
+    if emp_key == "groupanonymousbot":
+        await message.answer("⚠️ Iltimos, shaxsiy Telegram profilingizdan video yuboring (Anonim rejim o'chiq bo'lsin).")
+        return
+
+    user_name = emp["name"]
 
     if is_sunday():
         await message.answer(
@@ -425,7 +502,7 @@ async def handle_video(message: types.Message):
             parse_mode="Markdown"
         )
         return
-
+    
     now = now_tz()
     start_h, start_m = emp.get("work_start", (8, 0))
     end_h, end_m = emp.get("work_end", (12, 30))
@@ -447,7 +524,7 @@ async def handle_video(message: types.Message):
         allowed_until = records[emp_key].get("until_time", f"{end_h:02d}:{end_m:02d}")
         ah, am = map(int, allowed_until.split(":"))
         allowed_dt = now.replace(hour=ah, minute=am, second=0, microsecond=0)
-
+        
         if now <= allowed_dt:
             rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time_approved", "until_time": allowed_until}
             db_set_record(emp_key, rec)
@@ -480,10 +557,10 @@ async def handle_video(message: types.Message):
 
     late_minutes = int((now - work_start).total_seconds() / 60)
     fine_sum = calculate_fine(emp, late_minutes)
-
+    
     rec = {"name": user_name, "time": time_str, "late": late_minutes, "fine": fine_sum, "status": "late"}
     db_set_record(emp_key, rec)
-
+    
     await message.answer(
         f"⚠️ **{user_name}**, siz bugun {late_minutes} daqiqa kechikdingiz. (Kelgan vaqtingiz: {time_str})\n"
         f"💸 **Jarima miqdori:** {fine_sum:,} so'm.",
@@ -523,7 +600,7 @@ async def start_excuse(message: types.Message, state: FSMContext):
 async def send_excuse_to_group(message: types.Message, state: FSMContext):
     user_name = message.from_user.first_name or "Xodim"
     username = message.from_user.username or ""
-    emp_key, _ = get_employee(username, user_name)
+    emp_key, emp = get_employee(username, user_name)
     reason_text = message.text
 
     state_data = await state.get_data()
@@ -534,17 +611,17 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
             pass
 
     req_id = f"exc_{int(datetime.datetime.now().timestamp())}"
-
+    
     approve_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Roziman", callback_data=f"sabab_a_{req_id}"),
             InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"sabab_r_{req_id}")
         ]
     ])
-
+    
     group_msg = (
         f"📩 **YANGI ILTIMOSNOMA (Sababli kelolmaslik)**\n\n"
-        f"👤 **Xodim:** {user_name} (@{username})\n"
+        f"👤 **Xodim:** {emp['name']} (@{username})\n"
         f"📝 **Sababi:** {reason_text}\n\n"
         f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
     )
@@ -553,7 +630,7 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
     db["requests"][req_id] = {
         "req_type": "sabab",
         "emp_key": emp_key,
-        "emp_name": user_name,
+        "emp_name": emp["name"],
         "username": username,
         "reason": reason_text,
         "until_time": "",
@@ -614,9 +691,9 @@ async def handle_time_selection(callback: types.CallbackQuery, state: FSMContext
 async def send_late_request_to_group(message: types.Message, state: FSMContext):
     user_name = message.from_user.first_name or "Xodim"
     username = message.from_user.username or ""
-    emp_key, _ = get_employee(username, user_name)
+    emp_key, emp = get_employee(username, user_name)
     reason_text = message.text
-
+    
     data = await state.get_data()
     selected_time = data.get("selected_time", "10:00")
 
@@ -634,20 +711,20 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
             InlineKeyboardButton(text="❌ Rozi emasman", callback_data=f"late_r_{req_id}")
         ]
     ])
-
+    
     group_msg = (
         f"⏰ **YANGI ILTIMOSNOMA (Kech qolishga ruxsat)**\n\n"
-        f"👤 **Xodim:** {user_name} (@{username})\n"
+        f"👤 **Xodim:** {emp['name']} (@{username})\n"
         f"🕒 **Kutilayotgan kelish vaqti:** {selected_time} gacha\n"
         f"📝 **Sababi:** {reason_text}\n\n"
         f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
     )
-
+    
     db = load_db()
     db["requests"][req_id] = {
         "req_type": "late",
         "emp_key": emp_key,
-        "emp_name": user_name,
+        "emp_name": emp["name"],
         "username": username,
         "reason": reason_text,
         "until_time": selected_time,
@@ -662,14 +739,14 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("sabab_") | F.data.startswith("late_"))
 async def handle_boss_decisions(callback: types.CallbackQuery):
     clicker_username = (callback.from_user.username or "").lower()
-
+    
     if clicker_username not in BOSS_USERNAMES:
         await callback.answer("❌ Sizda bu qarorni qabul qilish huquqi yo'q! Qarorni faqat Abduvali yoki Ma'murxon beradi.", show_alert=True)
         return
 
     parts = callback.data.split("_")
-    category = parts[0]   # 'sabab' or 'late'
-    action = parts[1]     # 'a' (approve) or 'r' (reject)
+    category = parts[0]
+    action = parts[1]
     req_id = "_".join(parts[2:]) if len(parts) > 2 else ""
 
     boss_name = callback.from_user.first_name or "Rahbar"
@@ -766,34 +843,35 @@ async def check_absentees_1231():
     total_fine = 0
 
     for key, data in EMPLOYEES.items():
-        if key in records:
+        if key in records and records[key].get("status") != "absent":
             rec = records[key]
-            st = rec["status"]
+            st = rec.get("status", "")
 
             if st == "on_time":
-                present_text.append(f"🟢 **{data['name']}** — {rec['time']} da keldi (O'z vaqtida)")
+                present_text.append(f"🟢 **{data['name']}** — {rec.get('time', '')} da keldi (O'z vaqtida)")
             elif st == "on_time_approved":
-                present_text.append(f"🟢 **{data['name']}** — {rec['time']} da keldi (Ruxsat berilgan vaqtda kelgan)")
+                present_text.append(f"🟢 **{data['name']}** — {rec.get('time', '')} da keldi (Ruxsat berilgan vaqtda kelgan)")
             elif st == "late":
-                present_text.append(f"🟡 **{data['name']}** — {rec['time']} da keldi ({rec['late']} daqiqa kechikdi, Jarima: {rec['fine']:,} so'm)")
-                total_fine += rec["fine"]
+                present_text.append(f"🟡 **{data['name']}** — {rec.get('time', '')} da keldi ({rec.get('late', 0)} daqiqa kechikdi, Jarima: {rec.get('fine', 0):,} so'm)")
+                total_fine += rec.get('fine', 0)
             elif st == "excused_approved":
                 present_text.append(f"🔵 **{data['name']}** — Sababli kelmadi ({rec.get('boss', 'Rahbar')} tomonidan RUXSAT BERILGAN)")
-            elif st == "excused_rejected":
-                fine = data["absent"]
-                absent_text.append(f"🔴 **{data['name']}** — Kelmadi (Ruxsat so'ralgan, lekin {rec.get('boss', 'Rahbar')} tomonidan RAD ETILGAN. Jarima: {fine:,} so'm)")
-                total_fine += fine
-            elif st == "late_approved":
-                fine = data["absent"]
-                absent_text.append(f"🔴 **{data['name']}** — {rec.get('until_time', '12:30')} gacha ruxsat olgan edi, lekin kelmadi (Jarima: {fine:,} so'm)")
-                total_fine += fine
-            elif st == "late_rejected":
-                fine = data["absent"]
-                absent_text.append(f"🔴 **{data['name']}** — Kechikish so'ragan, lekin RAD ETILGAN va kelmadi (Jarima: {fine:,} so'm)")
-                total_fine += fine
         else:
             fine = data["absent"]
-            absent_text.append(f"🔴 **{data['name']}** (@{key}) — Kelmadi (Jarima: {fine:,} so'm)")
+
+            st = records.get(key, {}).get("status", "")
+            boss = records.get(key, {}).get("boss", "Rahbar")
+            until_t = records.get(key, {}).get("until_time", "12:30")
+
+            if st == "excused_rejected":
+                absent_text.append(f"🔴 **{data['name']}** — Kelmadi (Ruxsat so'ralgan, lekin {boss} tomonidan RAD ETILGAN. Jarima: {fine:,} so'm)")
+            elif st == "late_approved":
+                absent_text.append(f"🔴 **{data['name']}** — {until_t} gacha ruxsat olgan edi, lekin kelmadi (Jarima: {fine:,} so'm)")
+            elif st == "late_rejected":
+                absent_text.append(f"🔴 **{data['name']}** — Kechikish so'ragan, lekin RAD ETILGAN va kelmadi (Jarima: {fine:,} so'm)")
+            else:
+                absent_text.append(f"🔴 **{data['name']}** (@{key}) — Kelmadi (Jarima: {fine:,} so'm)")
+
             total_fine += fine
             db_set_record(key, {"name": data["name"], "fine": fine, "status": "absent"})
 
@@ -819,22 +897,12 @@ async def check_absentees_1231():
     )
 
 # ==========================================================
-# 🌐 WEBHOOK REJIMI (POLLING EMAS)
-# Endi bot Telegram'dan o'zi so'rab turmaydi (getUpdates yo'q),
-# aksincha Telegram yangiliklarni to'g'ridan-to'g'ri shu web-serverga
-# yuboradi. Shu sababli Render qayta-deploy qilganda eski va yangi
-# instansiya bir lahza birga tursa ham, "Conflict" xatoligi UMUMAN
-# chiqmaydi — chunki getUpdates band qilish degan tushuncha endi yo'q.
+# 🌐 WEBHOOK REJIMI
 # ==========================================================
 
 async def on_startup(bot: Bot) -> None:
     if not BASE_WEBHOOK_URL:
-        logging.error(
-            "❌ BASE_WEBHOOK_URL aniqlanmadi! Render'da bu 'Web Service' turida "
-            "ishlayotganiga ishonch hosil qiling (RENDER_EXTERNAL_URL avtomatik "
-            "o'rnatiladi), aks holda WEBHOOK_BASE_URL environment variable'ni "
-            "qo'lda qo'shing."
-        )
+        logging.error("❌ BASE_WEBHOOK_URL aniqlanmadi!")
         return
 
     webhook_url = f"{BASE_WEBHOOK_URL}{WEBHOOK_PATH}"
@@ -861,15 +929,17 @@ async def on_startup(bot: Bot) -> None:
 
     print("🤖 Ziynat Nazorat Boti (webhook rejimida) muvaffaqiyatli ishga tushdi...")
 
-
 async def on_shutdown(bot: Bot) -> None:
-    logging.info("🧹 Bot to'xtatilmoqda: scheduler yopilmoqda...")
+    logging.info("🧹 Bot to'xtatilmoqda...")
+    try:
+        await bot.delete_webhook()
+    except Exception:
+        pass
     try:
         scheduler.shutdown(wait=False)
     except Exception:
         pass
     logging.info("✅ Bot xavfsiz to'xtatildi.")
-
 
 def main():
     dp.startup.register(on_startup)
@@ -891,7 +961,6 @@ def main():
 
     port = int(os.environ.get("PORT", 8080))
     web.run_app(app, host="0.0.0.0", port=port)
-
 
 if __name__ == "__main__":
     main()
