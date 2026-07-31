@@ -43,23 +43,19 @@ GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1003993511736"))
 JARIMALAR_THREAD_ID = int(os.getenv("JARIMALAR_THREAD_ID", "55"))
 ISHGA_KELISH_THREAD_ID = int(os.getenv("ISHGA_KELISH_THREAD_ID", "1"))
 
-# 🐙 GITHUB AVTO-SAQLASH SOZLAMALARI
 GITHUB_REPO = "Ustazoda/ziynat-bot"
 GITHUB_FILE_PATH = "attendance_data.json"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "ghp_YOUR_GITHUB_TOKEN_HERE")
 
 bot = Bot(token=BOT_TOKEN)
 
-# ==========================================================
-# 🌐 WEBHOOK SOZLAMALARI
-# ==========================================================
 BASE_WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("WEBHOOK_BASE_URL", "")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET") or secrets.token_urlsafe(32)
 
 BOSS_USERNAMES = {"abduvali94", "abdullayev1200", "abdullayev_12_00"}
 
-# 👥 XODIMLAR VA ULARNING BARCHA USERNAME/ALIAS VARIANTLARI
+# 👥 XODIMLAR VA ULARNING ALIASLARI
 EMPLOYEES = {
     "abdullayev1200": {
         "name": "Ma'murxon",
@@ -69,6 +65,7 @@ EMPLOYEES = {
         "leave_time": "20:30",
         "rates": [(10, 30000), (30, 50000), (60, 70000), (120, 100000), (270, 150000)],
         "absent": 150000,
+        "active": True
     },
     "ganiboyevozodbek": {
         "name": "Ozodbek",
@@ -78,33 +75,17 @@ EMPLOYEES = {
         "leave_time": "21:00",
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
         "absent": 120000,
-    },
-    "wsev7": {
-        "name": "Gulzoda",
-        "aliases": ["wsev7", "gulzoda", "𝓰𝓾𝓵𝔃𝓸𝓭𝓪🤍"],
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "19:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-    },
-    "muradjanvnam": {
-        "name": "Moxinur",
-        "aliases": ["muradjanvnam", "muradjanvna_m", "moxinur", "ℳ"],
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "19:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
+        "active": True
     },
     "ustazoda0125": {
         "name": "Asadbek",
-        "aliases": ["ustazoda0125", "asadbek"],
+        "aliases": ["ustazoda0125", "asadbek", "tizim menenjeri", "groupanonymousbot", "group"],
         "work_start": (8, 0),
         "work_end": (12, 30),
         "leave_time": "18:00",
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
         "absent": 120000,
+        "active": True
     },
     "muhammad201207": {
         "name": "Muhammadsodiq",
@@ -114,6 +95,38 @@ EMPLOYEES = {
         "leave_time": "21:00",
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
         "absent": 100000,
+        "active": True
+    },
+    "murodjanovnaa_02": {
+        "name": "Mubina",
+        "aliases": ["murodjanovnaa_02", "muradjanovnaa_02", "mubina"],
+        "work_start": (8, 0),
+        "work_end": (12, 30),
+        "leave_time": "18:00",
+        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
+        "absent": 120000,
+        "active": True
+    },
+    # ESKIDAN ISHLAGAN (30-IYULDA KETGAN) XODIMLAR:
+    "wsev7": {
+        "name": "Gulzoda",
+        "aliases": ["wsev7", "gulzoda", "𝓰𝓾𝓵𝔃𝓸𝓭𝓪🤍"],
+        "work_start": (8, 0),
+        "work_end": (12, 30),
+        "leave_time": "19:00",
+        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
+        "absent": 120000,
+        "active": False # Bugundan e'tiboran 12:31 dagi hisobotga kirmaydi
+    },
+    "muradjanvnam": {
+        "name": "Moxinur",
+        "aliases": ["muradjanvnam", "muradjanvna_m", "moxinur", "ℳ"],
+        "work_start": (8, 0),
+        "work_end": (12, 30),
+        "leave_time": "19:00",
+        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
+        "absent": 120000,
+        "active": False # Bugundan e'tiboran 12:31 dagi hisobotga kirmaydi
     }
 }
 
@@ -127,7 +140,7 @@ DEFAULT_FINE = {
 }
 
 # ==========================================================
-# 📁 FAYLGA YOZISH VA GITHUB SINXRONIZATSIYASI
+# 📁 FAYL TIZIMI
 # ==========================================================
 DATA_FILE = "attendance_data.json"
 
@@ -142,15 +155,12 @@ def get_employee(username: str | None, first_name: str = "") -> tuple[str, dict]
     clean_u = clean_str(uname)
     clean_f = clean_str(fname)
 
-    if uname == "groupanonymousbot" or fname == "group":
-        return "groupanonymousbot", DEFAULT_FINE
-
-    # 1. Aniq username yoki alias mosligi
+    # 1. Exact username / alias match
     for key, data in EMPLOYEES.items():
         if uname == key or uname in data.get("aliases", []):
             return key, data
 
-    # 2. Tozalangan matn mosligi
+    # 2. Cleaned string match
     for key, data in EMPLOYEES.items():
         aliases = [clean_str(a) for a in data.get("aliases", [])]
         aliases.append(clean_str(key))
@@ -160,6 +170,10 @@ def get_employee(username: str | None, first_name: str = "") -> tuple[str, dict]
             return key, data
         if clean_f and any(clean_f == a or (len(clean_f) > 3 and clean_f in a) for a in aliases if a):
             return key, data
+
+    # Anonymous admin fallback to Asadbek
+    if uname == "groupanonymousbot" or fname == "group" or clean_f == "tizimmenenjeri":
+        return "ustazoda0125", EMPLOYEES["ustazoda0125"]
 
     clean_name = username or first_name or "Xodim"
     return clean_name.lower(), DEFAULT_FINE
@@ -234,12 +248,7 @@ def save_db(data: dict):
         logging.error(f"Faylga yozishda xatolik: {e}")
 
 def db_set_record(emp_key: str, record: dict):
-    if emp_key == "groupanonymousbot":
-        return
-
     canonical_key, emp_data = get_employee(emp_key, record.get("name", ""))
-    if canonical_key == "groupanonymousbot":
-        return
 
     db = load_db()
     today_str = now_tz().strftime("%Y-%m-%d")
@@ -264,12 +273,7 @@ def db_clean_today_records():
     cleaned_day = {}
 
     for raw_key, rec in day_data.items():
-        if raw_key == "groupanonymousbot":
-            continue
-            
         canonical_key, emp_data = get_employee(raw_key, rec.get("name", ""))
-        if canonical_key == "groupanonymousbot":
-            continue
 
         rec["name"] = emp_data["name"]
 
@@ -383,11 +387,7 @@ async def cmd_monthly_stat(message: types.Message):
     for date_key, day_records in attendance_db.items():
         if date_key.startswith(month_str):
             for raw_key, rec in day_records.items():
-                if raw_key == "groupanonymousbot":
-                    continue
                 canonical_key, emp_data = get_employee(raw_key, rec.get("name", ""))
-                if canonical_key == "groupanonymousbot":
-                    continue
 
                 if canonical_key not in stats:
                     stats[canonical_key] = {
@@ -439,10 +439,6 @@ async def cmd_monthly_stat(message: types.Message):
 @dp.message(Command("ketish"))
 async def handle_ketish(message: types.Message):
     emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    if emp_key == "groupanonymousbot":
-        await message.answer("⚠️ Iltimos, shaxsiy Telegram profilingizdan yozing (Anonim rejim o'chiq bo'lsin).")
-        return
-
     now = now_tz()
     now_time = now.strftime("%H:%M")
 
@@ -489,11 +485,6 @@ async def handle_video(message: types.Message):
     username = message.from_user.username
     first_name = message.from_user.first_name or ""
     emp_key, emp = get_employee(username, first_name)
-    
-    if emp_key == "groupanonymousbot":
-        await message.answer("⚠️ Iltimos, shaxsiy Telegram profilingizdan video yuboring (Anonim rejim o'chiq bo'lsin).")
-        return
-
     user_name = emp["name"]
 
     if is_sunday():
@@ -843,6 +834,10 @@ async def check_absentees_1231():
     total_fine = 0
 
     for key, data in EMPLOYEES.items():
+        # Ketgan xodimlarni bugungi kelmaganlar hisobotiga kiritmaslik
+        if not data.get("active", True):
+            continue
+
         if key in records and records[key].get("status") != "absent":
             rec = records[key]
             st = rec.get("status", "")
