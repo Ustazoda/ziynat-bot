@@ -819,7 +819,7 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
     )
 
 # 📊 SOAT 12:31 DAGI KUNLIK HISOBOT
-async def check_absentees_1607():
+async def check_absentees_1231():
     if is_sunday():
         await bot.send_message(
             chat_id=GROUP_CHAT_ID,
@@ -926,7 +926,7 @@ async def on_startup(bot: Bot) -> None:
     await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
 
     if not scheduler.running:
-        scheduler.add_job(check_absentees_1607, 'cron', hour=16, minute=07)
+        scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31)
         scheduler.start()
 
     print("🤖 Ziynat Nazorat Boti (webhook rejimida) muvaffaqiyatli ishga tushdi...")
