@@ -43,23 +43,18 @@ GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1003993511736"))
 JARIMALAR_THREAD_ID = int(os.getenv("JARIMALAR_THREAD_ID", "55"))
 ISHGA_KELISH_THREAD_ID = int(os.getenv("ISHGA_KELISH_THREAD_ID", "1"))
 
-# 🐙 GITHUB AVTO-SAQLASH SOZLAMALARI
 GITHUB_REPO = "Ustazoda/ziynat-bot"
 GITHUB_FILE_PATH = "attendance_data.json"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "ghp_YOUR_GITHUB_TOKEN_HERE")
 
 bot = Bot(token=BOT_TOKEN)
 
-# ==========================================================
-# 🌐 WEBHOOK SOZLAMALARI
-# ==========================================================
 BASE_WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("WEBHOOK_BASE_URL", "")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET") or secrets.token_urlsafe(32)
 
 BOSS_USERNAMES = {"abduvali94", "abdullayev1200", "abdullayev_12_00"}
 
-# 👥 XODIMLAR VA ULARNING ALIASLARI
 EMPLOYEES = {
     "abdullayev1200": {
         "name": "Ma'murxon",
@@ -106,15 +101,14 @@ EMPLOYEES = {
         "aliases": ["murodjanovnaa_02", "muradjanovnaa_02", "mubina"],
         "work_start": (8, 0),
         "work_end": (12, 30),
-        "leave_time": "20:00",
+        "leave_time": "18:00",
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
         "absent": 120000,
         "active": True
     },
-    # ESKIDAN ISHLAGAN (30-IYULDA KETGAN) XODIMLAR:
     "wsev7": {
         "name": "Gulzoda",
-        "aliases": ["wsev7", "gulzoda", "gulkan", "g3", "g4"],
+        "aliases": ["wsev7", "gulzoda", "gulkan"],
         "work_start": (8, 0),
         "work_end": (12, 30),
         "leave_time": "19:00",
@@ -267,7 +261,6 @@ def db_set_record(emp_key: str, record: dict):
     save_db(db)
 
 def db_clean_today_records():
-    """Bugungi saqlangan ma'lumotlardagi dublikatlar va anonim kalitlarni birlashtirish"""
     db = load_db()
     today_str = now_tz().strftime("%Y-%m-%d")
     if today_str not in db.get("attendance", {}):
@@ -320,14 +313,14 @@ def calculate_fine(employee: dict, minutes_late: int) -> int:
 @dp.message(Command("id"))
 async def cmd_id(message: types.Message):
     user = message.from_user
-    thread_info = f"🧵 **Mavzu ID:** `{message.message_thread_id}`\n" if message.message_thread_id else ""
+    thread_info = f"🧵 <b>Mavzu ID:</b> <code>{message.message_thread_id}</code>\n" if message.message_thread_id else ""
     await message.answer(
-        f"🆔 **Sizning ID:** `{user.id}`\n"
-        f"👤 **Ism:** {user.full_name}\n"
-        f"🔗 **Username:** @{user.username or 'yoq'}\n"
-        f"💬 **Chat ID:** `{message.chat.id}`\n"
+        f"🆔 <b>Sizning ID:</b> <code>{user.id}</code>\n"
+        f"👤 <b>Ism:</b> {user.full_name}\n"
+        f"🔗 <b>Username:</b> @{user.username or 'yoq'}\n"
+        f"💬 <b>Chat ID:</b> <code>{message.chat.id}</code>\n"
         f"{thread_info}",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 # /start
@@ -335,8 +328,8 @@ async def cmd_id(message: types.Message):
 async def cmd_start(message: types.Message):
     await message.answer(
         "Assalomu alaykum! 'Ziynat' do'koni nazorat botiga xush kelibsiz.\n\n"
-        "Buyruqlarni ko'rish uchun yozish joyida `/` belgisini bosing.",
-        parse_mode="Markdown"
+        "Buyruqlarni ko'rish uchun yozish joyida <code>/</code> belgisini bosing.",
+        parse_mode="HTML"
     )
 
 # 📎 /fayl
@@ -361,13 +354,13 @@ async def cmd_dam_olish(message: types.Message):
     today_name = days[now.weekday()]
     
     if is_sunday():
-        msg = f"🌴 **Bugun {today_name} — Rasmiy dam olish kuni!**\n\nBugun do'konimizda ish kuni emas. Kechikish va jarimalar hisoblanmaydi."
+        msg = f"🌴 <b>Bugun {today_name} — Rasmiy dam olish kuni!</b>\n\nBugun do'konimizda ish kuni emas. Kechikish va jarimalar hisoblanmaydi."
     else:
-        msg = f"📅 **Bugun {today_name} — Ish kuni.**\n\n📌 Rasmiy dam olish kuni: **Yakshanba**."
+        msg = f"📅 <b>Bugun {today_name} — Ish kuni.</b>\n\n📌 Rasmiy dam olish kuni: <b>Yakshanba</b>."
     
-    await message.answer(msg, parse_mode="Markdown")
+    await message.answer(msg, parse_mode="HTML")
 
-# 📊 /oylik
+# 📊 /oylik (XAVFSIZ HTML FORMATIDA)
 @dp.message(Command("oylik"))
 async def cmd_monthly_stat(message: types.Message):
     now = now_tz()
@@ -421,23 +414,23 @@ async def cmd_monthly_stat(message: types.Message):
 
                 stats[canonical_key]["bonus"] += bonus
 
-    report = f"📊 **{month_str} OYLIK DAVOMAT VA MAOSH HISOBI**\n\n"
+    report = f"📊 <b>{month_str} OYLIK DAVOMAT VA MAOSH HISOBI</b>\n\n"
     
     for key, s in stats.items():
         net = s["bonus"] - s["fine"]
         net_str = f"+{net:,}" if net >= 0 else f"{net:,}"
         report += (
-            f"👤 **{s['name']}** (@{key}):\n"
-            f"  🟢 Ishga kelgan: **{s['present']} kun**\n"
-            f"  🔵 Uzrli kelmagan: **{s['excused']} kun**\n"
-            f"  🔴 Kelmagan/Rad etilgan: **{s['absent']} kun**\n"
-            f"  ⏱ Jami kechikish: **{s['late_mins']} daqiqa**\n"
-            f"  💸 Jami jarima: **{s['fine']:,} so'm**\n"
-            f"  🎁 Jami bonus: **{s['bonus']:,} so'm**\n"
-            f"  ⚖️ **Net balans:** `{net_str} so'm`\n\n"
+            f"👤 <b>{s['name']}</b> (@{key}):\n"
+            f"  🟢 Ishga kelgan: <b>{s['present']} kun</b>\n"
+            f"  🔵 Uzrli kelmagan: <b>{s['excused']} kun</b>\n"
+            f"  🔴 Kelmagan/Rad etilgan: <b>{s['absent']} kun</b>\n"
+            f"  ⏱ Jami kechikish: <b>{s['late_mins']} daqiqa</b>\n"
+            f"  💸 Jami jarima: <b>{s['fine']:,} so'm</b>\n"
+            f"  🎁 Jami bonus: <b>{s['bonus']:,} so'm</b>\n"
+            f"  ⚖️ <b>Net balans:</b> <code>{net_str} so'm</code>\n\n"
         )
 
-    await message.answer(report, parse_mode="Markdown")
+    await message.answer(report, parse_mode="HTML")
 
 # /ketish
 @dp.message(Command("ketish"))
@@ -450,9 +443,9 @@ async def handle_ketish(message: types.Message):
     leave_dt = now.replace(hour=leave_h, minute=leave_m, second=0, microsecond=0)
 
     base_text = (
-        f"🚪 **{emp['name']}** ishxonadan chiqib ketdi.\n"
-        f"⏰ **Chiqish vaqti:** {now_time}\n"
-        f"📌 *Belgilangan ketish vaqti: {emp['leave_time']}*\n"
+        f"🚪 <b>{emp['name']}</b> ishxonadan chiqib ketdi.\n"
+        f"⏰ <b>Chiqish vaqti:</b> {now_time}\n"
+        f"📌 <i>Belgilangan ketish vaqti: {emp['leave_time']}</i>\n"
     )
 
     rec = {"name": emp["name"], "left_at": now_time}
@@ -462,14 +455,14 @@ async def handle_ketish(message: types.Message):
         bonus_sum = calculate_fine(emp, extra_minutes)
         rec["bonus"] = bonus_sum
         base_text += (
-            f"\n✅ **Qo'shimcha ishlagan vaqt:** {extra_minutes} daqiqa\n"
-            f"🎁 **Bonus miqdori:** {bonus_sum:,} so'm."
+            f"\n✅ <b>Qo'shimcha ishlagan vaqt:</b> {extra_minutes} daqiqa\n"
+            f"🎁 <b>Bonus miqdori:</b> {bonus_sum:,} so'm."
         )
     else:
-        base_text += "\nℹ️ *Ish vaqti hali tugamagan, shuning uchun bonus qo'llanilmaydi.*"
+        base_text += "\nℹ️ <i>Ish vaqti hali tugamagan, shuning uchun bonus qo'llanilmaydi.</i>"
 
     db_set_record(emp_key, rec)
-    await message.answer(base_text, parse_mode="Markdown")
+    await message.answer(base_text, parse_mode="HTML")
 
 # /qaytib_keldim
 @dp.message(Command("qaytib_keldim"))
@@ -478,9 +471,9 @@ async def handle_qaytib_keldim(message: types.Message):
     name = emp["name"]
     now_time = now_tz().strftime("%H:%M")
     await message.answer(
-        f"🔄 **{name}** ishxonaga qaytib keldi.\n"
-        f"⏰ **Qaytish vaqti:** {now_time}",
-        parse_mode="Markdown"
+        f"🔄 <b>{name}</b> ishxonaga qaytib keldi.\n"
+        f"⏰ <b>Qaytish vaqti:</b> {now_time}",
+        parse_mode="HTML"
     )
 
 # 📹 VIDEO NOTE / VIDEO
@@ -493,8 +486,8 @@ async def handle_video(message: types.Message):
 
     if is_sunday():
         await message.answer(
-            f"🌴 **{user_name}**, bugun Yakshanba — rasmiy dam olish kuni!\nVideo qabul qilindi, lekin jarima va kechikishlar hisoblanmaydi.",
-            parse_mode="Markdown"
+            f"🌴 <b>{user_name}</b>, bugun Yakshanba — rasmiy dam olish kuni!\nVideo qabul qilindi, lekin jarima va kechikishlar hisoblanmaydi.",
+            parse_mode="HTML"
         )
         return
     
@@ -507,8 +500,8 @@ async def handle_video(message: types.Message):
 
     if now > work_end:
         await message.answer(
-            f"⛔ **{user_name}**, soat {end_h:02d}:{end_m:02d} dan o'tdi. Video qabul qilish to'xtatilgan!",
-            parse_mode="Markdown"
+            f"⛔ <b>{user_name}</b>, soat {end_h:02d}:{end_m:02d} dan o'tdi. Video qabul qilish to'xtatilgan!",
+            parse_mode="HTML"
         )
         return
 
@@ -524,9 +517,9 @@ async def handle_video(message: types.Message):
             rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time_approved", "until_time": allowed_until}
             db_set_record(emp_key, rec)
             await message.answer(
-                f"✅ Baraka toping, **{user_name}**!\n"
+                f"✅ Baraka toping, <b>{user_name}</b>!\n"
                 f"Ruxsat berilgan vaqtda ({time_str} da) keldingiz. Jarima qo'llanilmaydi.",
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
             return
         else:
@@ -535,9 +528,9 @@ async def handle_video(message: types.Message):
             rec = {"name": user_name, "time": time_str, "late": late_mins, "fine": fine_sum, "status": "late"}
             db_set_record(emp_key, rec)
             await message.answer(
-                f"⚠️ **{user_name}**, siz ruxsat berilgan vaqtdan ({allowed_until}) {late_mins} daqiqa kechikdingiz!\n"
-                f"💸 **Jarima miqdori:** {fine_sum:,} so'm.",
-                parse_mode="Markdown"
+                f"⚠️ <b>{user_name}</b>, siz ruxsat berilgan vaqtdan ({allowed_until}) {late_mins} daqiqa kechikdingiz!\n"
+                f"💸 <b>Jarima miqdori:</b> {fine_sum:,} so'm.",
+                parse_mode="HTML"
             )
             return
 
@@ -545,8 +538,8 @@ async def handle_video(message: types.Message):
         rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time"}
         db_set_record(emp_key, rec)
         await message.answer(
-            f"✅ Baraka toping, **{user_name}**!\nIshga o'z vaqtida keldingiz. (Vaqt: {time_str})",
-            parse_mode="Markdown"
+            f"✅ Baraka toping, <b>{user_name}</b>!\nIshga o'z vaqtida keldingiz. (Vaqt: {time_str})",
+            parse_mode="HTML"
         )
         return
 
@@ -557,16 +550,16 @@ async def handle_video(message: types.Message):
     db_set_record(emp_key, rec)
     
     await message.answer(
-        f"⚠️ **{user_name}**, siz bugun {late_minutes} daqiqa kechikdingiz. (Kelgan vaqtingiz: {time_str})\n"
-        f"💸 **Jarima miqdori:** {fine_sum:,} so'm.",
-        parse_mode="Markdown"
+        f"⚠️ <b>{user_name}</b>, siz bugun {late_minutes} daqiqa kechikdingiz. (Kelgan vaqtingiz: {time_str})\n"
+        f"💸 <b>Jarima miqdori:</b> {fine_sum:,} so'm.",
+        parse_mode="HTML"
     )
 
 # ✍️ /sabab
 @dp.message(Command("sabab"))
 async def start_excuse(message: types.Message, state: FSMContext):
     if is_sunday():
-        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Iltimosnoma yuborish shart emas!", parse_mode="Markdown")
+        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Iltimosnoma yuborish shart emas!", parse_mode="HTML")
         return
 
     emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
@@ -576,18 +569,18 @@ async def start_excuse(message: types.Message, state: FSMContext):
 
     if now >= work_start:
         await message.answer(
-            f"⛔ **Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!**\n\n"
+            f"⛔ <b>Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!</b>\n\n"
             f"Sababli kelolmaslik haqidagi iltimosnoma faqat ish boshlanishidan oldin yuborilishi mumkin.",
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         return
 
     warning_text = (
-        "⚠️ **DIQQAT! SABABLI ISHGA KELOLMASLIK BO'YICHA ILTIMOSNOMA**\n\n"
-        "Iltimos, ishga kelolmasligingiz sababini **juda jiddiy yondashib, to'liq va tushunarli** holatda yozing.\n\n"
-        "✍️ **Sababingizni ushbu mavzuga yozib yuboring:**"
+        "⚠️ <b>DIQQAT! SABABLI ISHGA KELOLMASLIK BO'YICHA ILTIMOSNOMA</b>\n\n"
+        "Iltimos, ishga kelolmasligingiz sababini <b>juda jiddiy yondashib, to'liq va tushunarli</b> holatda yozing.\n\n"
+        "✍️ <b>Sababingizni ushbu mavzuga yozib yuboring:</b>"
     )
-    warning_msg = await message.answer(warning_text, parse_mode="Markdown")
+    warning_msg = await message.answer(warning_text, parse_mode="HTML")
     await state.update_data(warning_msg_id=warning_msg.message_id, warning_chat_id=warning_msg.chat.id)
     await state.set_state(ExcuseState.waiting_for_reason)
 
@@ -615,10 +608,10 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
     ])
     
     group_msg = (
-        f"📩 **YANGI ILTIMOSNOMA (Sababli kelolmaslik)**\n\n"
-        f"👤 **Xodim:** {emp['name']} (@{username})\n"
-        f"📝 **Sababi:** {reason_text}\n\n"
-        f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
+        f"📩 <b>YANGI ILTIMOSNOMA (Sababli kelolmaslik)</b>\n\n"
+        f"👤 <b>Xodim:</b> {emp['name']} (@{username})\n"
+        f"📝 <b>Sababi:</b> {reason_text}\n\n"
+        f"⚖️ <i>Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)</i>"
     )
 
     db = load_db()
@@ -633,7 +626,7 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
     }
     save_db(db)
 
-    await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="Markdown")
+    await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="HTML")
     await state.clear()
 
 # ⏰ /kech_qolish
@@ -646,7 +639,7 @@ time_picker_keyboard = InlineKeyboardMarkup(inline_keyboard=[
 @dp.message(Command("kech_qolish"))
 async def start_late_request(message: types.Message, state: FSMContext):
     if is_sunday():
-        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Kechikishga ruxsat so'rash shart emas!", parse_mode="Markdown")
+        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Kechikishga ruxsat so'rash shart emas!", parse_mode="HTML")
         return
 
     emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
@@ -656,17 +649,17 @@ async def start_late_request(message: types.Message, state: FSMContext):
 
     if now >= work_start:
         await message.answer(
-            f"⛔ **Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!**\n\n"
+            f"⛔ <b>Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!</b>\n\n"
             f"Kechikishga ruxsat so'rash faqat ish boshlanishidan oldin mumkin.",
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         return
 
     msg = await message.answer(
-        "⏰ **KECHIKISHGA RUXSAT SO'RASH**\n\n"
-        "Iltimos, bugun soat **nechagacha kechikishingizni** pastdagi tugmalar orqali tanlang:",
+        "⏰ <b>KECHIKISHGA RUXSAT SO'RASH</b>\n\n"
+        "Iltimos, bugun soat <b>nechagacha kechikishingizni</b> pastdagi tugmalar orqali tanlang:",
         reply_markup=time_picker_keyboard,
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     await state.update_data(warning_msg_id=msg.message_id, warning_chat_id=msg.chat.id)
 
@@ -675,9 +668,9 @@ async def handle_time_selection(callback: types.CallbackQuery, state: FSMContext
     selected_time = callback.data.split("_")[1]
     await state.update_data(selected_time=selected_time)
     await callback.message.edit_text(
-        f"⏰ Belgilangan vaqt: **{selected_time}**\n\n"
-        f"✍️ Endi kechikishingiz **sababini batafsil va jiddiy** yozib yuboring:",
-        parse_mode="Markdown"
+        f"⏰ Belgilangan vaqt: <b>{selected_time}</b>\n\n"
+        f"✍️ Endi kechikishingiz <b>sababini batafsil va jiddiy</b> yozib yuboring:",
+        parse_mode="HTML"
     )
     await state.set_state(LateState.waiting_for_reason)
     await callback.answer()
@@ -708,11 +701,11 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
     ])
     
     group_msg = (
-        f"⏰ **YANGI ILTIMOSNOMA (Kech qolishga ruxsat)**\n\n"
-        f"👤 **Xodim:** {emp['name']} (@{username})\n"
-        f"🕒 **Kutilayotgan kelish vaqti:** {selected_time} gacha\n"
-        f"📝 **Sababi:** {reason_text}\n\n"
-        f"⚖️ *Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)*"
+        f"⏰ <b>YANGI ILTIMOSNOMA (Kech qolishga ruxsat)</b>\n\n"
+        f"👤 <b>Xodim:</b> {emp['name']} (@{username})\n"
+        f"🕒 <b>Kutilayotgan kelish vaqti:</b> {selected_time} gacha\n"
+        f"📝 <b>Sababi:</b> {reason_text}\n\n"
+        f"⚖️ <i>Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)</i>"
     )
     
     db = load_db()
@@ -727,7 +720,7 @@ async def send_late_request_to_group(message: types.Message, state: FSMContext):
     }
     save_db(db)
 
-    await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="Markdown")
+    await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="HTML")
     await state.clear()
 
 # 👑 RAHBARLAR QARORLARI
@@ -764,20 +757,20 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
             rec = {"name": emp_name, "status": "excused_approved", "boss": boss_name, "reason": reason}
             db_set_record(emp_key, rec)
             public_msg = (
-                f"✅ **SABABLI ISHGA KELOLMASLIK (RUXSAT BERILDI)**\n\n"
-                f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"👑 **Qaror beruvchi:** {boss_name}\n"
-                f"📌 **Natija:** *Uzrli sabab deb topildi. Bugun jarima qo'llanilmaydi.*"
+                f"✅ <b>SABABLI ISHGA KELOLMASLIK (RUXSAT BERILDI)</b>\n\n"
+                f"👤 <b>Xodim:</b> {emp_name} (@{emp_username})\n"
+                f"👑 <b>Qaror beruvchi:</b> {boss_name}\n"
+                f"📌 <b>Natija:</b> <i>Uzrli sabab deb topildi. Bugun jarima qo'llanilmaydi.</i>"
             )
             await callback.answer("✅ Iltimosnoma tasdiqlandi.", show_alert=True)
         else:
             rec = {"name": emp_name, "status": "excused_rejected", "boss": boss_name, "reason": reason}
             db_set_record(emp_key, rec)
             public_msg = (
-                f"❌ **SABABLI ISHGA KELOLMASLIK (RAD ETILDI)**\n\n"
-                f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"👑 **Qaror beruvchi:** {boss_name}\n"
-                f"📌 **Natija:** *Sabab yetarsiz deb topildi. Belgilangan jarima qo'llaniladi.*"
+                f"❌ <b>SABABLI ISHGA KELOLMASLIK (RAD ETILDI)</b>\n\n"
+                f"👤 <b>Xodim:</b> {emp_name} (@{emp_username})\n"
+                f"👑 <b>Qaror beruvchi:</b> {boss_name}\n"
+                f"📌 <b>Natija:</b> <i>Sabab yetarsiz deb topildi. Belgilangan jarima qo'llaniladi.</i>"
             )
             await callback.answer("❌ Iltimosnoma rad etildi.", show_alert=True)
 
@@ -786,22 +779,22 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
             rec = {"name": emp_name, "status": "late_approved", "until_time": until_time, "boss": boss_name, "reason": reason}
             db_set_record(emp_key, rec)
             public_msg = (
-                f"✅ **KECHIKISHGA RUXSAT BERILDI**\n\n"
-                f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"⏰ **Ruxsat berilgan vaqt:** Soat {until_time} gacha\n"
-                f"👑 **Qaror beruvchi:** {boss_name}\n"
-                f"📌 **Natija:** *{until_time} gacha kelib video tashlasa jarima yozilmaydi.*"
+                f"✅ <b>KECHIKISHGA RUXSAT BERILDI</b>\n\n"
+                f"👤 <b>Xodim:</b> {emp_name} (@{emp_username})\n"
+                f"⏰ <b>Ruxsat berilgan vaqt:</b> Soat {until_time} gacha\n"
+                f"👑 <b>Qaror beruvchi:</b> {boss_name}\n"
+                f"📌 <b>Natija:</b> <i>{until_time} gacha kelib video tashlasa jarima yozilmaydi.</i>"
             )
             await callback.answer(f"✅ {until_time} gacha ruxsat berildi.", show_alert=True)
         else:
             rec = {"name": emp_name, "status": "late_rejected", "until_time": until_time, "boss": boss_name, "reason": reason}
             db_set_record(emp_key, rec)
             public_msg = (
-                f"❌ **KECHIKISHGA RUXSAT BERILMADI**\n\n"
-                f"👤 **Xodim:** {emp_name} (@{emp_username})\n"
-                f"⏰ **So'ralgan vaqt:** {until_time}\n"
-                f"👑 **Qaror beruvchi:** {boss_name}\n"
-                f"📌 **Natija:** *Standard kechikish jarimasi qo'llaniladi.*"
+                f"❌ <b>KECHIKISHGA RUXSAT BERILMADI</b>\n\n"
+                f"👤 <b>Xodim:</b> {emp_name} (@{emp_username})\n"
+                f"⏰ <b>So'ralgan vaqt:</b> {until_time}\n"
+                f"👑 <b>Qaror beruvchi:</b> {boss_name}\n"
+                f"📌 <b>Natija:</b> <i>Standard kechikish jarimasi qo'llaniladi.</i>"
             )
             await callback.answer("❌ Kechikish rad etildi.", show_alert=True)
 
@@ -809,8 +802,8 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
     save_db(db)
 
     try:
-        updated_card = callback.message.text + f"\n\n📌 **HUKM:** {'✅ TASDIQLANDI' if action == 'a' else '❌ RAD ETILDI'} ({boss_name})"
-        await callback.message.edit_text(updated_card, parse_mode="Markdown")
+        updated_card = callback.message.text + f"\n\n📌 <b>HUKM:</b> {'✅ TASDIQLANDI' if action == 'a' else '❌ RAD ETILDI'} ({boss_name})"
+        await callback.message.edit_text(updated_card, parse_mode="HTML")
     except Exception:
         pass
 
@@ -818,7 +811,7 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
         chat_id=GROUP_CHAT_ID,
         text=public_msg,
         message_thread_id=ISHGA_KELISH_THREAD_ID,
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 # 📊 SOAT 12:31 DAGI KUNLIK HISOBOT
@@ -826,9 +819,9 @@ async def check_absentees_1231():
     if is_sunday():
         await bot.send_message(
             chat_id=GROUP_CHAT_ID,
-            text="🌴 **BUGUN YAKSHANBA (DAM OLISH KUNI)**\n\nBugun do'konimizda ish kuni emas, shuning uchun davomat va jarimalar hisoblanmadi. Barchaga maroqli dam olish tilaymiz!",
+            text="🌴 <b>BUGUN YAKSHANBA (DAM OLISH KUNI)</b>\n\nBugun do'konimizda ish kuni emas, shuning uchun davomat va jarimalar hisoblanmadi. Barchaga maroqli dam olish tilaymiz!",
             message_thread_id=JARIMALAR_THREAD_ID,
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         return
 
@@ -846,14 +839,14 @@ async def check_absentees_1231():
             st = rec.get("status", "")
 
             if st == "on_time":
-                present_text.append(f"🟢 **{data['name']}** — {rec.get('time', '')} da keldi (O'z vaqtida)")
+                present_text.append(f"🟢 <b>{data['name']}</b> — {rec.get('time', '')} da keldi (O'z vaqtida)")
             elif st == "on_time_approved":
-                present_text.append(f"🟢 **{data['name']}** — {rec.get('time', '')} da keldi (Ruxsat berilgan vaqtda kelgan)")
+                present_text.append(f"🟢 <b>{data['name']}</b> — {rec.get('time', '')} da keldi (Ruxsat berilgan vaqtda kelgan)")
             elif st == "late":
-                present_text.append(f"🟡 **{data['name']}** — {rec.get('time', '')} da keldi ({rec.get('late', 0)} daqiqa kechikdi, Jarima: {rec.get('fine', 0):,} so'm)")
+                present_text.append(f"🟡 <b>{data['name']}</b> — {rec.get('time', '')} da keldi ({rec.get('late', 0)} daqiqa kechikdi, Jarima: {rec.get('fine', 0):,} so'm)")
                 total_fine += rec.get('fine', 0)
             elif st == "excused_approved":
-                present_text.append(f"🔵 **{data['name']}** — Sababli kelmadi ({rec.get('boss', 'Rahbar')} tomonidan RUXSAT BERILGAN)")
+                present_text.append(f"🔵 <b>{data['name']}</b> — Sababli kelmadi ({rec.get('boss', 'Rahbar')} tomonidan RUXSAT BERILGAN)")
         else:
             fine = data["absent"]
 
@@ -862,36 +855,36 @@ async def check_absentees_1231():
             until_t = records.get(key, {}).get("until_time", "12:30")
 
             if st == "excused_rejected":
-                absent_text.append(f"🔴 **{data['name']}** — Kelmadi (Ruxsat so'ralgan, lekin {boss} tomonidan RAD ETILGAN. Jarima: {fine:,} so'm)")
+                absent_text.append(f"🔴 <b>{data['name']}</b> — Kelmadi (Ruxsat so'ralgan, lekin {boss} tomonidan RAD ETILGAN. Jarima: {fine:,} so'm)")
             elif st == "late_approved":
-                absent_text.append(f"🔴 **{data['name']}** — {until_t} gacha ruxsat olgan edi, lekin kelmadi (Jarima: {fine:,} so'm)")
+                absent_text.append(f"🔴 <b>{data['name']}</b> — {until_t} gacha ruxsat olgan edi, lekin kelmadi (Jarima: {fine:,} so'm)")
             elif st == "late_rejected":
-                absent_text.append(f"🔴 **{data['name']}** — Kechikish so'ragan, lekin RAD ETILGAN va kelmadi (Jarima: {fine:,} so'm)")
+                absent_text.append(f"🔴 <b>{data['name']}</b> — Kechikish so'ragan, lekin RAD ETILGAN va kelmadi (Jarima: {fine:,} so'm)")
             else:
-                absent_text.append(f"🔴 **{data['name']}** (@{key}) — Kelmadi (Jarima: {fine:,} so'm)")
+                absent_text.append(f"🔴 <b>{data['name']}</b> (@{key}) — Kelmadi (Jarima: {fine:,} so'm)")
 
             total_fine += fine
             db_set_record(key, {"name": data["name"], "fine": fine, "status": "absent"})
 
-    report = "📊 **SOAT 12:31 KUNLIK DAVOMAT VA JARIMALAR HISOBOTI**\n\n"
+    report = "📊 <b>SOAT 12:31 KUNLIK DAVOMAT VA JARIMALAR HISOBOTI</b>\n\n"
 
     if present_text:
         present_str = "\n".join(present_text)
-        report += f"✅ **Ishga kelganlar va ruxsat olganlar:**\n{present_str}\n\n"
+        report += f"✅ <b>Ishga kelganlar va ruxsat olganlar:</b>\n{present_str}\n\n"
     else:
-        report += "⚠️ **Bugun hech kim ishga kelmadi!**\n\n"
+        report += "⚠️ <b>Bugun hech kim ishga kelmadi!</b>\n\n"
 
     if absent_text:
         absent_str = "\n".join(absent_text)
-        report += f"❌ **Ishga kelmaganlar:**\n{absent_str}\n\n"
+        report += f"❌ <b>Ishga kelmaganlar:</b>\n{absent_str}\n\n"
 
-    report += f"💸 **Bugungi jami belgilanayotgan jarima:** {total_fine:,} so'm."
+    report += f"💸 <b>Bugungi jami belgilanayotgan jarima:</b> {total_fine:,} so'm."
 
     await bot.send_message(
         chat_id=GROUP_CHAT_ID,
         text=report,
         message_thread_id=JARIMALAR_THREAD_ID,
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 # ==========================================================
