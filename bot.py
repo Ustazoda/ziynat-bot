@@ -4,7 +4,7 @@ import base64
 import datetime
 import logging
 import asyncio
-import signal
+import secrets
 import aiohttp
 from zoneinfo import ZoneInfo
 from aiohttp import web
@@ -18,6 +18,7 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, BotCommand,
     BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, FSInputFile
 )
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -48,6 +49,20 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "ghp_YOUR_GITHUB_TOKEN_HERE")
 
 bot = Bot(token=BOT_TOKEN)
 
+# ==========================================================
+# 🌐 WEBHOOK SOZLAMALARI
+# Render "Web Service" turidagi xizmatlar uchun RENDER_EXTERNAL_URL
+# degan environment variable'ni avtomatik o'zi o'rnatadi
+# (masalan: https://ziynat-bot.onrender.com). Shuning uchun
+# qo'lda hech narsa sozlash shart emas.
+# ==========================================================
+BASE_WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("WEBHOOK_BASE_URL", "")
+WEBHOOK_PATH = "/webhook"
+# Har bir instansiya ishga tushganda o'z-o'zidan tasodifiy maxfiy token yaratiladi.
+# Xohlasangiz Render Environment'da WEBHOOK_SECRET nomli o'zgaruvchi qo'shib,
+# uni doimiy qilib belgilashingiz ham mumkin (majburiy emas).
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET") or secrets.token_urlsafe(32)
+
 BOSS_USERNAMES = {"abduvali94", "abdullayev1200"}
 
 EMPLOYEES = {
@@ -67,11 +82,11 @@ EMPLOYEES = {
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
         "absent": 120000,
     },
-    "@murodjanovnaa_02": {
-        "name": "Mubuna",
+    "wsev7": {
+        "name": "Gulzoda",
         "work_start": (8, 0),
         "work_end": (12, 30),
-        "leave_time": "20:00",
+        "leave_time": "19:00",
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
         "absent": 120000,
     },
@@ -803,24 +818,28 @@ async def check_absentees_1231():
         parse_mode="Markdown"
     )
 
-# 🌐 RENDER VEB-SERVER
-async def start_dummy_server():
-    app = web.Application()
-    app.router.add_get("/", lambda r: web.Response(text="Ziynat Nazorat Bot is running 24/7 on Render!"))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 8080))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
+# ==========================================================
+# 🌐 WEBHOOK REJIMI (POLLING EMAS)
+# Endi bot Telegram'dan o'zi so'rab turmaydi (getUpdates yo'q),
+# aksincha Telegram yangiliklarni to'g'ridan-to'g'ri shu web-serverga
+# yuboradi. Shu sababli Render qayta-deploy qilganda eski va yangi
+# instansiya bir lahza birga tursa ham, "Conflict" xatoligi UMUMAN
+# chiqmaydi — chunki getUpdates band qilish degan tushuncha endi yo'q.
+# ==========================================================
 
-# ==========================================================
-# 🛑 XAVFSIZ TO'XTATISH (GRACEFUL SHUTDOWN)
-# Bu qism Render qayta-deploy qilganda ESKI instansiyani
-# darhol to'xtatib, Telegram'dagi getUpdates bandligini
-# bo'shatib beradi — shu orqali "Conflict" xatoligi oldini oladi.
-# ==========================================================
-async def main():
-    await start_dummy_server()
+async def on_startup(bot: Bot) -> None:
+    if not BASE_WEBHOOK_URL:
+        logging.error(
+            "❌ BASE_WEBHOOK_URL aniqlanmadi! Render'da bu 'Web Service' turida "
+            "ishlayotganiga ishonch hosil qiling (RENDER_EXTERNAL_URL avtomatik "
+            "o'rnatiladi), aks holda WEBHOOK_BASE_URL environment variable'ni "
+            "qo'lda qo'shing."
+        )
+        return
+
+    webhook_url = f"{BASE_WEBHOOK_URL}{WEBHOOK_PATH}"
+    await bot.set_webhook(url=webhook_url, secret_token=WEBHOOK_SECRET)
+    logging.info(f"✅ Webhook o'rnatildi: {webhook_url}")
 
     commands = [
         BotCommand(command="kech_qolish", description="⏰ Kech qolishga ruxsat so'rash"),
@@ -833,61 +852,46 @@ async def main():
         BotCommand(command="id", description="🆔 ID ma'lumotlarini ko'rish"),
         BotCommand(command="start", description="🤖 Botni qayta ishga tushirish")
     ]
-
     await bot.set_my_commands(commands, scope=BotCommandScopeAllGroupChats())
     await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
 
-    scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31)
-    scheduler.start()
+    if not scheduler.running:
+        scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31)
+        scheduler.start()
 
-    await bot.delete_webhook(drop_pending_updates=True)
+    print("🤖 Ziynat Nazorat Boti (webhook rejimida) muvaffaqiyatli ishga tushdi...")
 
-    # SIGTERM/SIGINT kelganda pollingni darhol to'xtatish uchun signal handler
-    loop = asyncio.get_running_loop()
-    stop_event = asyncio.Event()
 
-    def _request_stop():
-        logging.info("🛑 To'xtatish signali qabul qilindi (Render redeploy yoki manual stop)...")
-        stop_event.set()
-
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
-            loop.add_signal_handler(sig, _request_stop)
-        except NotImplementedError:
-            # Windows kabi ba'zi platformalarda signal handlerlar qo'llab-quvvatlanmaydi
-            pass
-
-    print("🤖 Ziynat Nazorat Boti muvaffaqiyatli ishga tushdi...")
-
-    polling_task = asyncio.create_task(dp.start_polling(bot))
-
-    # Ikkalasidan qaysi biri birinchi bo'lsa (polling o'zi to'xtasa yoki signal kelsa)
-    done, pending = await asyncio.wait(
-        {polling_task, asyncio.create_task(stop_event.wait())},
-        return_when=asyncio.FIRST_COMPLETED
-    )
-
-    if not polling_task.done():
-        polling_task.cancel()
-        try:
-            await polling_task
-        except asyncio.CancelledError:
-            pass
-
-    for task in pending:
-        task.cancel()
-
-    logging.info("🧹 Resurslarni tozalash: scheduler va bot sessiyasi yopilmoqda...")
+async def on_shutdown(bot: Bot) -> None:
+    logging.info("🧹 Bot to'xtatilmoqda: scheduler yopilmoqda...")
     try:
         scheduler.shutdown(wait=False)
     except Exception:
         pass
-    try:
-        await bot.session.close()
-    except Exception:
-        pass
-
     logging.info("✅ Bot xavfsiz to'xtatildi.")
 
+
+def main():
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
+
+    app = web.Application()
+    app.router.add_get(
+        "/",
+        lambda r: web.Response(text="Ziynat Nazorat Bot ishlamoqda (webhook rejimida)!")
+    )
+
+    webhook_handler = SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+        secret_token=WEBHOOK_SECRET,
+    )
+    webhook_handler.register(app, path=WEBHOOK_PATH)
+    setup_application(app, dp, bot=bot)
+
+    port = int(os.environ.get("PORT", 8080))
+    web.run_app(app, host="0.0.0.0", port=port)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
