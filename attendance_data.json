@@ -182,6 +182,12 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "ustazoda0125": {
+        "name": "Asadbek",
+        "status": "excused_approved",
+        "boss": "Abduvali",
+        "reason": "Assalomu aleykum Abduvali aka kecha uyga yet olganimdan kasalim kuchayib ketdi. Tomogʻim ogʻriyapti. Shunga bugunga ishga bormasam boʻladimi. Oyim ham unamayaptilar"
       }
     }
   },
