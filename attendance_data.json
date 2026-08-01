@@ -171,6 +171,15 @@
       "reason": "Assalomu alaykum Ertaga bozorga chiqib bozorlik qilib kelishim kerak. Shuning uchun soat 10:00 gacha ruhsat bera olasizmi",
       "until_time": "10:00",
       "status": "pending"
+    },
+    "exc_1785546048": {
+      "req_type": "sabab",
+      "emp_key": "ustazoda0125",
+      "emp_name": "Asadbek",
+      "username": "Ustazoda0125",
+      "reason": "Assalomu aleykum Abduvali aka kecha uyga yet olganimdan kasalim kuchayib ketdi. Tomogʻim ogʻriyapti. Shunga bugunga ishga bormasam boʻladimi. Oyim ham unamayaptilar",
+      "until_time": "",
+      "status": "pending"
     }
   }
 }
