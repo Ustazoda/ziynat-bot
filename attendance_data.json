@@ -209,11 +209,12 @@
         "fine": 0,
         "status": "on_time"
       },
-      "ustazoda0125": {
-        "name": "Asadbek",
-        "status": "excused_approved",
-        "boss": "abdullayev",
-        "reason": "Assalomu aleykum Abduvali aka kasalim kuchayib ketdi. Tomogʻim ogʻriyapti. Shunga bugunga ishga bormasam boʻladimi."
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "time": "09:14",
+        "late": 54,
+        "fine": 70000,
+        "status": "late"
       }
     }
   },
@@ -252,7 +253,7 @@
       "username": "Ustazoda0125",
       "reason": "Assalomu aleykum Abduvali aka kasalim kuchayib ketdi. Tomogʻim ogʻriyapti. Shunga bugunga ishga bormasam boʻladimi.",
       "until_time": "",
-      "status": "pending"
+      "status": "approved"
     }
   }
 }
