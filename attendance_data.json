@@ -208,6 +208,12 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "ustazoda0125": {
+        "name": "Asadbek",
+        "status": "excused_approved",
+        "boss": "abdullayev",
+        "reason": "Assalomu aleykum Abduvali aka kasalim kuchayib ketdi. Tomogʻim ogʻriyapti. Shunga bugunga ishga bormasam boʻladimi."
       }
     }
   },
