@@ -193,6 +193,15 @@
         "fine": 120000,
         "status": "absent"
       }
+    },
+    "2026-08-03": {
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "time": "07:43",
+        "late": 43,
+        "fine": 40000,
+        "status": "late"
+      }
     }
   },
   "requests": {
