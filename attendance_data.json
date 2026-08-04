@@ -226,6 +226,15 @@
         "fine": 120000,
         "status": "absent"
       }
+    },
+    "2026-08-04": {
+      "ustazoda0125": {
+        "name": "Asadbek",
+        "time": "07:51",
+        "late": 0,
+        "fine": 0,
+        "status": "on_time"
+      }
     }
   },
   "requests": {
