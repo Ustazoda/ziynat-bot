@@ -32,13 +32,16 @@ TZ = ZoneInfo("Asia/Tashkent")
 def now_tz() -> datetime.datetime:
     return datetime.datetime.now(TZ)
 
-def is_sunday() -> bool:
-    return now_tz().weekday() == 6
-
 # ==========================================================
 # 🔑 SOZLAMALAR
 # ==========================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "BOT_TOKEN environment variable topilmadi! Render'ning Environment "
+        "bo'limida BOT_TOKEN ni sozlang."
+    )
+
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1003993511736"))
 JARIMALAR_THREAD_ID = int(os.getenv("JARIMALAR_THREAD_ID", "55"))
 ISHGA_KELISH_THREAD_ID = int(os.getenv("ISHGA_KELISH_THREAD_ID", "1"))
@@ -78,7 +81,7 @@ EMPLOYEES = {
     },
     "ustazoda0125": {
         "name": "Asadbek",
-        "aliases": ["ustazoda0125", "asadbek", "tizim menenjeri", "groupanonymousbot", "group"],
+        "aliases": ["ustazoda0125", "asadbek", "tizim menenjeri"],
         "work_start": (8, 0),
         "work_end": (12, 30),
         "leave_time": "18:00",
@@ -108,7 +111,7 @@ EMPLOYEES = {
     },
     "wsev7": {
         "name": "Gulzoda",
-        "aliases": ["wsev7", "gulzoda", "gulkan"],
+        "aliases": ["wsev7", "gulzoda"],
         "work_start": (8, 0),
         "work_end": (12, 30),
         "leave_time": "19:00",
@@ -118,7 +121,7 @@ EMPLOYEES = {
     },
     "muradjanvnam": {
         "name": "Moxinur",
-        "aliases": ["muradjanvnam", "muradjanvna_m", "moxinur", "ℳ"],
+        "aliases": ["muradjanvnam"],
         "work_start": (8, 0),
         "work_end": (12, 30),
         "leave_time": "19:00",
@@ -176,6 +179,40 @@ def get_employee(username: str | None, first_name: str = "") -> tuple[str, dict]
     clean_name = username or first_name or "Xodim"
     return clean_name.lower(), DEFAULT_FINE
 
+async def pull_from_github():
+    """
+    Bot ishga tushganda (yoki qayta deploy bo'lganda) Render'ning diski
+    tozalanib ketishi mumkin — shu sababli GitHub'dagi eng so'nggi
+    attendance_data.json faylini diskka tiklab olamiz. Buni qilmasak,
+    har qayta ishga tushishda kunlik davomat ma'lumotlari yo'qolib qoladi.
+    """
+    if not GITHUB_TOKEN or GITHUB_TOKEN == "ghp_YOUR_GITHUB_TOKEN_HERE":
+        logging.warning("GITHUB_TOKEN sozlanmagan — ma'lumotlarni tiklashning iloji yo'q.")
+        return
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as resp:
+                if resp.status == 200:
+                    res_data = await resp.json()
+                    content_b64 = res_data.get("content", "")
+                    if content_b64:
+                        content_bytes = base64.b64decode(content_b64)
+                        with open(DATA_FILE, "wb") as f:
+                            f.write(content_bytes)
+                        logging.info("✅ attendance_data.json GitHub'dan muvaffaqiyatli tiklandi.")
+                elif resp.status == 404:
+                    logging.info("ℹ️ GitHub'da hali attendance_data.json topilmadi — yangi fayl bilan boshlanadi.")
+                else:
+                    logging.warning(f"⚠️ GitHub'dan o'qishda kutilmagan status: {resp.status}")
+    except Exception as e:
+        logging.error(f"❌ GitHub'dan tiklashda xato: {e}")
+
 async def push_to_github():
     if not GITHUB_TOKEN or GITHUB_TOKEN == "ghp_YOUR_GITHUB_TOKEN_HERE":
         return
@@ -219,7 +256,7 @@ async def push_to_github():
 
 def load_db() -> dict:
     if not os.path.exists(DATA_FILE):
-        return {"attendance": {}, "requests": {}}
+        return {"attendance": {}, "requests": {}, "day_off_dates": []}
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -227,10 +264,12 @@ def load_db() -> dict:
                 data["attendance"] = {}
             if "requests" not in data:
                 data["requests"] = {}
+            if "day_off_dates" not in data:
+                data["day_off_dates"] = []
             return data
     except Exception as e:
         logging.error(f"Fayl o'qishda xatolik: {e}")
-        return {"attendance": {}, "requests": {}}
+        return {"attendance": {}, "requests": {}, "day_off_dates": []}
 
 def save_db(data: dict):
     try:
@@ -245,19 +284,26 @@ def save_db(data: dict):
     except Exception as e:
         logging.error(f"Faylga yozishda xatolik: {e}")
 
-def db_set_record(emp_key: str, record: dict):
+def db_set_record(emp_key: str, record: dict, date_str: str | None = None):
+    """
+    date_str berilmasa — bugungi kunga yoziladi (avvalgidek).
+    date_str berilsa — o'sha kunga yoziladi (masalan, kechqurun ertangi kun
+    uchun yuborilgan /sabab iltimosnomasi ERTANGI sanaga yozilishi kerak,
+    aks holda kunlik hisobotlarda noto'g'ri kunga tushib qoladi).
+    """
     canonical_key, emp_data = get_employee(emp_key, record.get("name", ""))
 
     db = load_db()
-    today_str = now_tz().strftime("%Y-%m-%d")
-    
-    if today_str not in db["attendance"]:
-        db["attendance"][today_str] = {}
+    if date_str is None:
+        date_str = now_tz().strftime("%Y-%m-%d")
+
+    if date_str not in db["attendance"]:
+        db["attendance"][date_str] = {}
         
-    existing = db["attendance"][today_str].get(canonical_key, {})
+    existing = db["attendance"][date_str].get(canonical_key, {})
     existing.update(record)
     existing["name"] = emp_data["name"]
-    db["attendance"][today_str][canonical_key] = existing
+    db["attendance"][date_str][canonical_key] = existing
     save_db(db)
 
 def db_clean_today_records():
@@ -292,6 +338,44 @@ def db_get_today_records() -> dict:
     db = load_db()
     today_str = now_tz().strftime("%Y-%m-%d")
     return db["attendance"].get(today_str, {})
+
+# ==========================================================
+# 🌴 DAM OLISH KUNLARI (endi haftalik emas — qo'lda belgilanadi)
+# ==========================================================
+# Avvalgi versiyada har Yakshanba avtomatik dam kuni hisoblanardi. Endi
+# do'kon har kuni ishlaydi — dam kuni faqat rahbariyat /dam_olish orqali
+# aniq bir sanani belgilab qo'yganda hosil bo'ladi.
+
+def is_day_off(date_obj: datetime.date | None = None) -> bool:
+    if date_obj is None:
+        date_obj = now_tz().date()
+    db = load_db()
+    return date_obj.strftime("%Y-%m-%d") in db.get("day_off_dates", [])
+
+def set_day_off(date_obj: datetime.date) -> bool:
+    """Sanani dam kuni deb belgilaydi. Agar allaqachon belgilangan bo'lsa
+    False, aks holda True qaytaradi."""
+    db = load_db()
+    if "day_off_dates" not in db:
+        db["day_off_dates"] = []
+    date_str = date_obj.strftime("%Y-%m-%d")
+    if date_str in db["day_off_dates"]:
+        return False
+    db["day_off_dates"].append(date_str)
+    save_db(db)
+    return True
+
+def relevant_work_date(now: datetime.datetime | None = None) -> datetime.date:
+    """
+    /sabab so'rovi qaysi ish kuniga tegishli ekanini aniqlaydi:
+    - soat 08:00 dan oldin (00:00–07:59) yuborilsa -> BUGUNGI ish kuni
+    - soat 12:30 dan keyin (kechqurun) yuborilsa -> ERTANGI ish kuni
+    """
+    if now is None:
+        now = now_tz()
+    if now.time() >= datetime.time(12, 30):
+        return (now + datetime.timedelta(days=1)).date()
+    return now.date()
 
 class ExcuseState(StatesGroup):
     waiting_for_reason = State()
@@ -346,19 +430,54 @@ async def cmd_get_file(message: types.Message):
     else:
         await message.answer("⚠️ Hali fayl yaratilmagan.")
 
-# 🌴 /dam_olish
+# 🌴 /dam_olish — endi qo'lda belgilanadigan dam kuni tizimi
 @dp.message(Command("dam_olish"))
 async def cmd_dam_olish(message: types.Message):
     now = now_tz()
     days = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
     today_name = days[now.weekday()]
-    
-    if is_sunday():
-        msg = f"🌴 <b>Bugun {today_name} — Rasmiy dam olish kuni!</b>\n\nBugun do'konimizda ish kuni emas. Kechikish va jarimalar hisoblanmaydi."
+
+    if is_day_off(now.date()):
+        status_text = f"🌴 <b>Bugun ({today_name}) — DAM OLISH KUNI deb belgilangan!</b>\n\nBugun jarima va kechikishlar hisoblanmaydi."
     else:
-        msg = f"📅 <b>Bugun {today_name} — Ish kuni.</b>\n\n📌 Rasmiy dam olish kuni: <b>Yakshanba</b>."
-    
-    await message.answer(msg, parse_mode="HTML")
+        status_text = f"📅 <b>Bugun ({today_name}) — oddiy ISH KUNI.</b>\n\nEndi bizda haftalik dam kuni yo'q, har kuni ish kuni — dam kuni faqat rahbariyat quyidagi tugmalar orqali alohida belgilaganda bo'ladi."
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🌴 Bugun dam", callback_data="damolish_today"),
+            InlineKeyboardButton(text="🌴 Ertaga dam", callback_data="damolish_tomorrow"),
+        ]
+    ])
+
+    await message.answer(status_text, reply_markup=keyboard, parse_mode="HTML")
+
+@dp.callback_query(F.data.startswith("damolish_"))
+async def handle_dam_olish_decision(callback: types.CallbackQuery):
+    clicker_username = (callback.from_user.username or "").lower()
+    if clicker_username not in BOSS_USERNAMES:
+        await callback.answer("❌ Dam kunini faqat rahbariyat belgilashi mumkin!", show_alert=True)
+        return
+
+    which = callback.data.split("_", 1)[1]  # "today" | "tomorrow"
+    target_date = now_tz().date() if which == "today" else (now_tz().date() + datetime.timedelta(days=1))
+    label = "Bugun" if which == "today" else "Ertaga"
+    date_str = target_date.strftime("%d.%m.%Y")
+
+    added = set_day_off(target_date)
+
+    if added:
+        await callback.answer(f"✅ {label} ({date_str}) dam kuni deb belgilandi.", show_alert=True)
+        try:
+            await callback.message.edit_text(
+                f"🌴 <b>{label} ({date_str}) — DAM OLISH KUNI deb belgilandi!</b>\n\n"
+                f"👑 <b>Belgilagan:</b> {callback.from_user.first_name}\n"
+                f"Bu kuni jarima va kechikishlar hisoblanmaydi.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+    else:
+        await callback.answer(f"ℹ️ {label} ({date_str}) allaqachon dam kuni deb belgilangan edi.", show_alert=True)
 
 # 📊 /oylik
 @dp.message(Command("oylik"))
@@ -488,14 +607,15 @@ async def handle_video(message: types.Message):
     emp_key, emp = get_employee(username, first_name)
     user_name = emp["name"]
 
-    if is_sunday():
+    now = now_tz()
+
+    if is_day_off(now.date()):
         await message.answer(
-            f"🌴 <b>{user_name}</b>, bugun Yakshanba — rasmiy dam olish kuni!\nVideo qabul qilindi, lekin jarima va kechikishlar hisoblanmaydi.",
+            f"🌴 <b>{user_name}</b>, bugun DAM OLISH KUNI deb belgilangan!\nVideo qabul qilindi, lekin jarima va kechikishlar hisoblanmaydi.",
             parse_mode="HTML"
         )
         return
-    
-    now = now_tz()
+
     start_h, start_m = emp.get("work_start", (8, 0))
     end_h, end_m = emp.get("work_end", (12, 30))
 
@@ -515,9 +635,12 @@ async def handle_video(message: types.Message):
     if emp_key in records and records[emp_key].get("status") == "late_approved":
         allowed_until = records[emp_key].get("until_time", f"{end_h:02d}:{end_m:02d}")
         ah, am = map(int, allowed_until.split(":"))
+        # "X gacha kech qolaman" desa, X:00 dan X:59 gacha ham o'z vaqtida
+        # hisoblanadi — faqat X+1 daqiqadan boshlab kechikish sanaladi.
         allowed_dt = now.replace(hour=ah, minute=am, second=0, microsecond=0)
-        
-        if now <= allowed_dt:
+        allowed_cutoff = allowed_dt + datetime.timedelta(minutes=1)
+
+        if now < allowed_cutoff:
             rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time_approved", "until_time": allowed_until}
             db_set_record(emp_key, rec)
             await message.answer(
@@ -538,7 +661,12 @@ async def handle_video(message: types.Message):
             )
             return
 
-    if now <= work_start:
+    # Xuddi shu "daqiqa ichi hammasi o'z vaqtida" mantig'i oddiy kelish
+    # vaqti uchun ham qo'llanadi (masalan ish 08:00 da boshlansa, 08:00:40
+    # da kelgan xodim ham kechikkan hisoblanmasligi kerak).
+    work_start_cutoff = work_start + datetime.timedelta(minutes=1)
+
+    if now < work_start_cutoff:
         rec = {"name": user_name, "time": time_str, "late": 0, "fine": 0, "status": "on_time"}
         db_set_record(emp_key, rec)
         await message.answer(
@@ -559,24 +687,24 @@ async def handle_video(message: types.Message):
         parse_mode="HTML"
     )
 
-# ✍️ /sabab
+# ✍️ /sabab — endi soat 12:30 dan 07:59 gacha (kechqurun ertangi kun uchun,
+# yoki ertalab bugungi kun uchun) qabul qilinadi
 @dp.message(Command("sabab"))
 async def start_excuse(message: types.Message, state: FSMContext):
-    if is_sunday():
-        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Iltimosnoma yuborish shart emas!", parse_mode="HTML")
-        return
-
-    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
     now = now_tz()
-    start_h, start_m = emp.get("work_start", (8, 0))
-    work_start = now.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+    target_date = relevant_work_date(now)
 
-    if now >= work_start:
+    in_window = (now.time() >= datetime.time(12, 30)) or (now.time() < datetime.time(8, 0))
+    if not in_window:
         await message.answer(
-            f"⛔ <b>Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!</b>\n\n"
-            f"Sababli kelolmaslik haqidagi iltimosnoma faqat ish boshlanishidan oldin yuborilishi mumkin.",
+            "⛔ <b>Sababli kelolmaslik iltimosnomasi faqat soat 12:30 dan 07:59 gacha "
+            "(kechqurun yoki ertalab) qabul qilinadi.</b>",
             parse_mode="HTML"
         )
+        return
+
+    if is_day_off(target_date):
+        await message.answer("🌴 Bu kun dam olish kuni deb belgilangan. Iltimosnoma yuborish shart emas!", parse_mode="HTML")
         return
 
     warning_text = (
@@ -585,7 +713,11 @@ async def start_excuse(message: types.Message, state: FSMContext):
         "✍️ <b>Sababingizni ushbu mavzuga yozib yuboring:</b>"
     )
     warning_msg = await message.answer(warning_text, parse_mode="HTML")
-    await state.update_data(warning_msg_id=warning_msg.message_id, warning_chat_id=warning_msg.chat.id)
+    await state.update_data(
+        warning_msg_id=warning_msg.message_id,
+        warning_chat_id=warning_msg.chat.id,
+        target_date=target_date.strftime("%Y-%m-%d"),
+    )
     await state.set_state(ExcuseState.waiting_for_reason)
 
 @dp.message(ExcuseState.waiting_for_reason)
@@ -602,6 +734,7 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
         except Exception:
             pass
 
+    target_date_str = state_data.get("target_date") or now_tz().strftime("%Y-%m-%d")
     req_id = f"exc_{int(datetime.datetime.now().timestamp())}"
     
     approve_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -614,6 +747,7 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
     group_msg = (
         f"📩 <b>YANGI ILTIMOSNOMA (Sababli kelolmaslik)</b>\n\n"
         f"👤 <b>Xodim:</b> {emp['name']} (@{username})\n"
+        f"📅 <b>Qaysi kun uchun:</b> {target_date_str}\n"
         f"📝 <b>Sababi:</b> {reason_text}\n\n"
         f"⚖️ <i>Qaror berish huquqi faqat rahbariyatda (Abduvali / Ma'murxon)</i>"
     )
@@ -626,6 +760,7 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
         "username": username,
         "reason": reason_text,
         "until_time": "",
+        "work_date": target_date_str,
         "status": "pending"
     }
     save_db(db)
@@ -633,7 +768,7 @@ async def send_excuse_to_group(message: types.Message, state: FSMContext):
     await message.answer(group_msg, reply_markup=approve_keyboard, parse_mode="HTML")
     await state.clear()
 
-# ⏰ /kech_qolish
+# ⏰ /kech_qolish — endi soat 00:00 dan 07:59 gacha qabul qilinadi
 time_picker_keyboard = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="08:30", callback_data="time_08:30"), InlineKeyboardButton(text="09:00", callback_data="time_09:00"), InlineKeyboardButton(text="09:30", callback_data="time_09:30")],
     [InlineKeyboardButton(text="10:00", callback_data="time_10:00"), InlineKeyboardButton(text="10:30", callback_data="time_10:30"), InlineKeyboardButton(text="11:00", callback_data="time_11:00")],
@@ -642,19 +777,15 @@ time_picker_keyboard = InlineKeyboardMarkup(inline_keyboard=[
 
 @dp.message(Command("kech_qolish"))
 async def start_late_request(message: types.Message, state: FSMContext):
-    if is_sunday():
-        await message.answer("🌴 Bugun Yakshanba (dam olish kuni). Kechikishga ruxsat so'rash shart emas!", parse_mode="HTML")
+    now = now_tz()
+
+    if is_day_off(now.date()):
+        await message.answer("🌴 Bugun dam olish kuni deb belgilangan. Kechikishga ruxsat so'rash shart emas!", parse_mode="HTML")
         return
 
-    emp_key, emp = get_employee(message.from_user.username, message.from_user.first_name or "")
-    now = now_tz()
-    start_h, start_m = emp.get("work_start", (8, 0))
-    work_start = now.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
-
-    if now >= work_start:
+    if now.time() >= datetime.time(8, 0):
         await message.answer(
-            f"⛔ <b>Ish vaqti (soat {start_h:02d}:{start_m:02d}) allaqachon boshlandi!</b>\n\n"
-            f"Kechikishga ruxsat so'rash faqat ish boshlanishidan oldin mumkin.",
+            "⛔ <b>Kechikishga ruxsat so'rash faqat soat 00:00 dan 07:59 gacha qabul qilinadi.</b>",
             parse_mode="HTML"
         )
         return
@@ -755,11 +886,15 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
     emp_username = req_data["username"]
     reason = req_data["reason"]
     until_time = req_data["until_time"]
+    # "sabab" so'rovlari kechqurun ertangi kun uchun yuborilgan bo'lishi
+    # mumkin — shu sababli yozuv REQUEST yaratilganda aniqlangan sanaga
+    # yoziladi, qaror qabul qilingan sanaga emas.
+    work_date = req_data.get("work_date")
 
     if category == "sabab":
         if action == "a":
             rec = {"name": emp_name, "status": "excused_approved", "boss": boss_name, "reason": reason}
-            db_set_record(emp_key, rec)
+            db_set_record(emp_key, rec, date_str=work_date)
             public_msg = (
                 f"✅ <b>SABABLI ISHGA KELOLMASLIK (RUXSAT BERILDI)</b>\n\n"
                 f"👤 <b>Xodim:</b> {emp_name} (@{emp_username})\n"
@@ -769,7 +904,7 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
             await callback.answer("✅ Iltimosnoma tasdiqlandi.", show_alert=True)
         else:
             rec = {"name": emp_name, "status": "excused_rejected", "boss": boss_name, "reason": reason}
-            db_set_record(emp_key, rec)
+            db_set_record(emp_key, rec, date_str=work_date)
             public_msg = (
                 f"❌ <b>SABABLI ISHGA KELOLMASLIK (RAD ETILDI)</b>\n\n"
                 f"👤 <b>Xodim:</b> {emp_name} (@{emp_username})\n"
@@ -820,10 +955,10 @@ async def handle_boss_decisions(callback: types.CallbackQuery):
 
 # 📊 SOAT 12:31 DAGI KUNLIK HISOBOT
 async def check_absentees_1231():
-    if is_sunday():
+    if is_day_off(now_tz().date()):
         await bot.send_message(
             chat_id=GROUP_CHAT_ID,
-            text="🌴 <b>BUGUN YAKSHANBA (DAM OLISH KUNI)</b>\n\nBugun do'konimizda ish kuni emas, shuning uchun davomat va jarimalar hisoblanmadi. Barchaga maroqli dam olish tilaymiz!",
+            text="🌴 <b>BUGUN DAM OLISH KUNI DEB BELGILANGAN</b>\n\nBugun do'konimizda ish kuni emas, shuning uchun davomat va jarimalar hisoblanmadi. Barchaga maroqli dam olish tilaymiz!",
             message_thread_id=JARIMALAR_THREAD_ID,
             parse_mode="HTML"
         )
@@ -896,6 +1031,10 @@ async def check_absentees_1231():
 # ==========================================================
 
 async def on_startup(bot: Bot) -> None:
+    # Diskdagi ma'lumot Render qayta ishga tushganda yo'qolib ketmasligi
+    # uchun eng birinchi navbatda GitHub'dan tiklab olamiz.
+    await pull_from_github()
+
     if not BASE_WEBHOOK_URL:
         logging.error("❌ BASE_WEBHOOK_URL aniqlanmadi!")
         return
@@ -917,7 +1056,7 @@ async def on_startup(bot: Bot) -> None:
         BotCommand(command="ketish", description="🚪 Ishxonadan chiqib ketish"),
         BotCommand(command="qaytib_keldim", description="🔄 Ishxonaga qaytib kelish"),
         BotCommand(command="oylik", description="📊 Oylik davomat va maosh hisobi"),
-        BotCommand(command="dam_olish", description="🌴 Dam olish kuni haqida ma'lumot"),
+        BotCommand(command="dam_olish", description="🌴 Dam olish kunini belgilash / ko'rish"),
         BotCommand(command="fayl", description="📎 Barcha davomat faylini yuklab olish"),
         BotCommand(command="id", description="🆔 ID ma'lumotlarini ko'rish"),
         BotCommand(command="start", description="🤖 Botni qayta ishga tushirish")
@@ -926,7 +1065,7 @@ async def on_startup(bot: Bot) -> None:
     await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
 
     if not scheduler.running:
-        scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31)
+        scheduler.add_job(check_absentees_1231, 'cron', hour=12, minute=31, misfire_grace_time=300)
         scheduler.start()
 
     print("🤖 Ziynat Nazorat Boti (webhook rejimida) muvaffaqiyatli ishga tushdi...")
