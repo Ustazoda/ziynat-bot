@@ -420,6 +420,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "time": "08:42",
+        "late": 22,
+        "fine": 50000,
+        "status": "late"
       }
     }
   },
