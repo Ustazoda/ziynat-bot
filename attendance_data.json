@@ -481,6 +481,15 @@
       "reason": "Assalomu aleykum Abduvali aka kasalim kuchayib ketdi. Tomogʻim ogʻriyapti. Shunga bugunga ishga bormasam boʻladimi.",
       "until_time": "",
       "status": "approved"
+    },
+    "late_1786413804": {
+      "req_type": "late",
+      "emp_key": "ustazoda0125",
+      "emp_name": "Asadbek",
+      "username": "Ustazoda0125",
+      "reason": "Assalomu alaykum Qarindoshlarimnikiga yuk olib borishim kerak shunga kech qolaman.",
+      "until_time": "09:00",
+      "status": "pending"
     }
   },
   "day_off_dates": []
