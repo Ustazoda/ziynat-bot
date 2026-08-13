@@ -33,6 +33,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
+# Yangi kod Render'ga chindan ham yuklanganini tekshirish uchun belgi.
+# /start yuborilganda shu raqam ko'rinadi va log'da ham chiqadi.
+BOT_VERSION = "2.1 (menyu tugmalari)"
+
 # ==========================================================
 # 🕒 VAQT ZONASI — O'zbekiston vaqti (Asia/Tashkent)
 # ==========================================================
@@ -226,6 +230,7 @@ def is_boss(user: types.User | None) -> bool:
 # ==========================================================
 # ⌨️ MENYU TUGMALARI (yozish joyidagi klaviatura)
 # ==========================================================
+BTN_MENYU = "📋 MENYU"
 BTN_KECH = "⏰ Kech qolish"
 BTN_SABAB = "✍️ Sabab"
 BTN_KETISH = "🚪 Ketish"
@@ -234,17 +239,28 @@ BTN_OYLIK = "📊 Oylik hisob"
 BTN_HISOBOT = "👁 Bugungi holat"
 BTN_DAM = "🌴 Dam olish"
 BTN_FAYL = "📎 Fayl"
-BTN_YOPISH = "❌ Menyuni yopish"
+BTN_YIGISH = "🔽 Yig'ish"
 
 MENU_BUTTONS = {
-    BTN_KECH, BTN_SABAB, BTN_KETISH, BTN_QAYTDIM,
-    BTN_OYLIK, BTN_HISOBOT, BTN_DAM, BTN_FAYL, BTN_YOPISH
+    BTN_MENYU, BTN_KECH, BTN_SABAB, BTN_KETISH, BTN_QAYTDIM,
+    BTN_OYLIK, BTN_HISOBOT, BTN_DAM, BTN_FAYL, BTN_YIGISH
 }
 
 
-def main_menu(boss: bool, selective: bool = True) -> ReplyKeyboardMarkup:
+def menu_collapsed(selective: bool = True) -> ReplyKeyboardMarkup:
+    """Yig'ilgan holat — yozish joyida faqat bitta '📋 MENYU' tugmasi turadi."""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=BTN_MENYU)]],
+        resize_keyboard=True,
+        is_persistent=True,
+        selective=selective,
+        input_field_placeholder="📋 MENYU tugmasini bosing"
+    )
+
+
+def menu_expanded(boss: bool, selective: bool = True) -> ReplyKeyboardMarkup:
     """
-    Yozish joyining yonidagi ⌨️ tugmasi bosilganda chiqadigan menyu.
+    Ochilgan holat — '📋 MENYU' bosilganda chiqadi.
     selective=True — klaviatura faqat so'ragan odamga ko'rinadi
     (guruhdagi qolgan xodimlarga xalaqit bermaydi).
     """
@@ -256,7 +272,7 @@ def main_menu(boss: bool, selective: bool = True) -> ReplyKeyboardMarkup:
     if boss:
         rows.append([KeyboardButton(text=BTN_HISOBOT), KeyboardButton(text=BTN_DAM)])
         rows.append([KeyboardButton(text=BTN_FAYL)])
-    rows.append([KeyboardButton(text=BTN_YOPISH)])
+    rows.append([KeyboardButton(text=BTN_YIGISH)])
 
     return ReplyKeyboardMarkup(
         keyboard=rows,
@@ -695,9 +711,10 @@ async def cmd_id(message: types.Message):
     )
 
 
-async def show_menu(message: types.Message, greeting: str):
+async def show_menu(message: types.Message, greeting: str, expanded: bool = True):
     selective = message.chat.type != "private"
-    kb = main_menu(is_boss(message.from_user), selective=selective)
+    kb = (menu_expanded(is_boss(message.from_user), selective=selective)
+          if expanded else menu_collapsed(selective=selective))
     # selective klaviatura ishlashi uchun xabar REPLY bo'lishi shart
     try:
         await message.reply(greeting, reply_markup=kb)
@@ -710,10 +727,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     await show_menu(
         message,
-        "Assalomu alaykum! 'Ziynat' do'koni nazorat botiga xush kelibsiz.\n\n"
-        "⌨️ Pastdagi <b>menyu tugmalari</b> orqali ishlatishingiz mumkin.\n"
-        "<i>Agar tugmalar ko'rinmasa — yozish joyining o'ng tomonidagi "
-        "⌨️ belgisini bosing.</i>"
+        f"Assalomu alaykum! 'Ziynat' do'koni nazorat boti.\n"
+        f"<i>Versiya: {BOT_VERSION}</i>\n\n"
+        "⌨️ Pastda <b>📋 MENYU</b> tugmasi paydo bo'ldi — uni bosing, "
+        "qolgan tugmalar ochiladi.\n\n"
+        "<i>Agar tugma ko'rinmasa — yozish joyining o'ng tomonidagi "
+        "⌨️ belgisini bosing.</i>",
+        expanded=False
     )
 
 
@@ -721,6 +741,18 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def cmd_menu(message: types.Message, state: FSMContext):
     await state.clear()
     await show_menu(message, "⌨️ <b>Menyu ochildi.</b> Kerakli bo'limni tanlang:")
+
+
+@dp.message(Command("menyu_ochir"))
+async def cmd_menu_remove(message: types.Message, state: FSMContext):
+    """Klaviaturani butunlay olib tashlash (qayta tiklash: /menyu)."""
+    await state.clear()
+    selective = message.chat.type != "private"
+    text = "✅ Klaviatura olib tashlandi. Qaytarish uchun /menyu yuboring."
+    try:
+        await message.reply(text, reply_markup=ReplyKeyboardRemove(selective=selective))
+    except TelegramBadRequest:
+        await message.answer(text, reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message(Command("bekor"))
@@ -1159,6 +1191,29 @@ async def handle_menu_buttons(message: types.Message, state: FSMContext):
     text = message.text
     await state.clear()
 
+    # Menyuni ochish / yig'ish — guruh mavzusi keraksiz xabarlar bilan
+    # to'lib ketmasligi uchun bosilgan tugma xabari o'chiriladi.
+    if text in (BTN_MENYU, BTN_YIGISH):
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        selective = message.chat.type != "private"
+        if text == BTN_MENYU:
+            kb = menu_expanded(is_boss(message.from_user), selective=selective)
+            note = "⌨️ <b>Menyu ochildi</b> — kerakli bo'limni tanlang."
+        else:
+            kb = menu_collapsed(selective=selective)
+            note = "🔽 <b>Menyu yig'ildi.</b> Qayta ochish uchun 📋 MENYU tugmasini bosing."
+        try:
+            await bot.send_message(
+                message.chat.id, note, reply_markup=kb,
+                message_thread_id=message.message_thread_id
+            )
+        except TelegramBadRequest:
+            await bot.send_message(message.chat.id, note, reply_markup=kb)
+        return
+
     if text == BTN_KECH:
         await do_kech_qolish(message, state)
     elif text == BTN_SABAB:
@@ -1178,18 +1233,6 @@ async def handle_menu_buttons(message: types.Message, state: FSMContext):
             await do_dam_olish(message)
     elif text == BTN_FAYL:
         await do_fayl(message)
-    elif text == BTN_YOPISH:
-        selective = message.chat.type != "private"
-        try:
-            await message.reply(
-                "✅ Menyu yopildi. Qayta ochish uchun /menyu buyrug'ini yuboring.",
-                reply_markup=ReplyKeyboardRemove(selective=selective)
-            )
-        except TelegramBadRequest:
-            await message.answer(
-                "✅ Menyu yopildi. Qayta ochish uchun /menyu buyrug'ini yuboring.",
-                reply_markup=ReplyKeyboardRemove()
-            )
 
 
 @dp.callback_query(F.data.startswith("cancelfsm:"))
@@ -1711,7 +1754,7 @@ async def on_startup(bot: Bot) -> None:
         scheduler.start()
         logging.info(f"🗓 Kunlik hisobot vaqti: {REPORT_HOUR:02d}:{REPORT_MINUTE:02d}")
 
-    logging.info("🤖 Ziynat Nazorat Boti (webhook rejimida) ishga tushdi.")
+    logging.info(f"🤖 Ziynat Nazorat Boti ishga tushdi. Versiya: {BOT_VERSION}")
 
 
 async def on_shutdown(bot: Bot) -> None:
