@@ -531,6 +531,16 @@
         "late": 11,
         "fine": 50000,
         "status": "late"
+      },
+      "ganiboyevozodbek": {
+        "name": "Ozodbek",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "murodjanovnaa_02": {
+        "name": "Mubina",
+        "fine": 120000,
+        "status": "absent"
       }
     }
   },
