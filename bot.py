@@ -35,7 +35,7 @@ logging.basicConfig(
 
 # Yangi kod Render'ga chindan ham yuklanganini tekshirish uchun belgi.
 # /start yuborilganda shu raqam ko'rinadi va log'da ham chiqadi.
-BOT_VERSION = "2.2 (menyu tugmalari)"
+BOT_VERSION = "2.3"
 
 # ==========================================================
 # 🕒 VAQT ZONASI — O'zbekiston vaqti (Asia/Tashkent)
@@ -235,13 +235,12 @@ BTN_SABAB = "✍️ Sabab"
 BTN_KETISH = "🚪 Ketish"
 BTN_QAYTDIM = "🔄 Qaytib keldim"
 BTN_OYLIK = "📊 Oylik hisob"
-BTN_HISOBOT = "👁 Bugungi holat"
 BTN_DAM = "🌴 Dam olish"
 BTN_FAYL = "📎 Fayl"
 
 MENU_BUTTONS = {
     BTN_KECH, BTN_SABAB, BTN_KETISH, BTN_QAYTDIM,
-    BTN_OYLIK, BTN_HISOBOT, BTN_DAM, BTN_FAYL
+    BTN_OYLIK, BTN_DAM, BTN_FAYL
 }
 
 
@@ -265,8 +264,7 @@ def main_menu(boss: bool, selective: bool = True) -> ReplyKeyboardMarkup:
         [KeyboardButton(text=BTN_OYLIK)],
     ]
     if boss:
-        rows.append([KeyboardButton(text=BTN_HISOBOT), KeyboardButton(text=BTN_DAM)])
-        rows.append([KeyboardButton(text=BTN_FAYL)])
+        rows.append([KeyboardButton(text=BTN_DAM), KeyboardButton(text=BTN_FAYL)])
 
     return ReplyKeyboardMarkup(
         keyboard=rows,
@@ -734,28 +732,6 @@ async def cmd_menu(message: types.Message, state: FSMContext):
     await show_menu(message, "⌨️ <b>Menyu ochildi.</b> Kerakli bo'limni tanlang:")
 
 
-@dp.message(Command("menyu_ochir"))
-async def cmd_menu_remove(message: types.Message, state: FSMContext):
-    """Klaviaturani butunlay olib tashlash (qayta tiklash: /menyu)."""
-    await state.clear()
-    selective = message.chat.type != "private"
-    text = "✅ Klaviatura olib tashlandi. Qaytarish uchun /menyu yuboring."
-    try:
-        await message.reply(text, reply_markup=ReplyKeyboardRemove(selective=selective))
-    except TelegramBadRequest:
-        await message.answer(text, reply_markup=ReplyKeyboardRemove())
-
-
-@dp.message(Command("bekor"))
-async def cmd_cancel(message: types.Message, state: FSMContext):
-    """Yarim qolgan /sabab yoki /kech_qolish jarayonidan chiqish."""
-    if await state.get_state() is None:
-        await message.answer("ℹ️ Hozir bekor qiladigan jarayon yo'q.")
-        return
-    await state.clear()
-    await message.answer("✅ Jarayon bekor qilindi.")
-
-
 async def do_fayl(message: types.Message):
     if not is_boss(message.from_user):
         await message.answer("❌ Bu bo'lim faqat rahbarlar uchun!")
@@ -1200,8 +1176,6 @@ async def handle_menu_buttons(message: types.Message, state: FSMContext):
         await do_qaytib_keldim(message)
     elif text == BTN_OYLIK:
         await do_monthly(message)
-    elif text == BTN_HISOBOT:
-        await do_hisobot(message)
     elif text == BTN_DAM:
         if not is_boss(message.from_user):
             await message.answer("❌ Bu bo'lim faqat rahbarlar uchun!")
@@ -1234,7 +1208,10 @@ async def handle_cancel_fsm(callback: types.CallbackQuery, state: FSMContext):
 @dp.message(ExcuseState.waiting_for_reason)
 async def send_excuse_to_group(message: types.Message, state: FSMContext):
     if not message.text or message.text.startswith("/"):
-        await message.answer("✍️ Iltimos, sababni <b>oddiy matn</b> ko'rinishida yozing yoki /bekor bosing.")
+        await message.answer(
+            "✍️ Iltimos, sababni <b>oddiy matn</b> ko'rinishida yozing "
+            "yoki yuqoridagi 🚫 <b>Bekor qilish</b> tugmasini bosing."
+        )
         return
 
     emp_key, emp = get_employee(
@@ -1361,7 +1338,10 @@ async def handle_time_selection(callback: types.CallbackQuery, state: FSMContext
 @dp.message(LateState.waiting_for_reason)
 async def send_late_request_to_group(message: types.Message, state: FSMContext):
     if not message.text or message.text.startswith("/"):
-        await message.answer("✍️ Iltimos, sababni <b>oddiy matn</b> ko'rinishida yozing yoki /bekor bosing.")
+        await message.answer(
+            "✍️ Iltimos, sababni <b>oddiy matn</b> ko'rinishida yozing "
+            "yoki yuqoridagi 🚫 <b>Bekor qilish</b> tugmasini bosing."
+        )
         return
 
     emp_key, emp = get_employee(
@@ -1637,29 +1617,6 @@ async def check_absentees_daily():
         logging.exception(f"❌ Kunlik hisobotda xato: {e}")
 
 
-async def do_hisobot(message: types.Message):
-    """Rahbarlar uchun: hozirgi holatni ko'rish (jarima YOZILMAYDI)."""
-    if not is_boss(message.from_user):
-        await message.answer("❌ Bu bo'lim faqat rahbarlar uchun!")
-        return
-
-    today = now_tz().date()
-    if is_day_off(today):
-        await message.answer("🌴 Bugun dam olish kuni deb belgilangan.")
-        return
-
-    report, _ = build_daily_report(db_get_records(today), today)
-    await answer_long(
-        message,
-        "👁 <b>ORALIQ KO'RINISH (jarimalar hali yozilmadi)</b>\n\n" + report
-    )
-
-
-@dp.message(Command("hisobot"))
-async def cmd_report_preview(message: types.Message):
-    await do_hisobot(message)
-
-
 # ==========================================================
 # 🌐 WEBHOOK REJIMI
 # ==========================================================
@@ -1692,16 +1649,13 @@ async def on_startup(bot: Bot) -> None:
             logging.error(f"❌ Webhook o'rnatishda xato: {e}")
 
     commands = [
-        BotCommand(command="menyu", description="⌨️ Menyu tugmalarini ochish"),
         BotCommand(command="kech_qolish", description="⏰ Kech qolishga ruxsat so'rash"),
         BotCommand(command="sabab", description="✍️ Kelolmaslik iltimosnomasi"),
         BotCommand(command="ketish", description="🚪 Ishxonadan chiqib ketish"),
         BotCommand(command="qaytib_keldim", description="🔄 Ishxonaga qaytib kelish"),
-        BotCommand(command="hisobot", description="👁 Bugungi holat (rahbarlar uchun)"),
         BotCommand(command="oylik", description="📊 Oylik davomat va maosh hisobi"),
         BotCommand(command="dam_olish", description="🌴 Dam olish kunini belgilash / ko'rish"),
         BotCommand(command="fayl", description="📎 Barcha davomat faylini yuklab olish"),
-        BotCommand(command="bekor", description="🚫 Boshlangan jarayonni bekor qilish"),
         BotCommand(command="id", description="🆔 ID ma'lumotlarini ko'rish"),
         BotCommand(command="start", description="🤖 Botni qayta ishga tushirish"),
     ]
