@@ -23,7 +23,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, BotCommand,
     BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, FSInputFile,
-    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, MenuButtonCommands
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -1691,6 +1691,15 @@ async def on_startup(bot: Bot) -> None:
         await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
     except Exception as e:
         logging.error(f"Buyruqlarni o'rnatishda xato: {e}")
+
+    # ⌨️ Yozish joyining chap tomonidagi ko'k "Menu" tugmasi.
+    # Bosilganda yuqoridagi buyruqlar ro'yxati tugmalar bo'lib chiqadi.
+    # (Telegram cheklovi: bu tugma FAQAT bot bilan shaxsiy chatda ko'rinadi.)
+    try:
+        await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        logging.info("✅ 'Menu' tugmasi o'rnatildi.")
+    except Exception as e:
+        logging.error(f"'Menu' tugmasini o'rnatishda xato: {e}")
 
     if not scheduler.running:
         scheduler.add_job(
