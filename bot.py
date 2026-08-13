@@ -35,7 +35,7 @@ logging.basicConfig(
 
 # Yangi kod Render'ga chindan ham yuklanganini tekshirish uchun belgi.
 # /start yuborilganda shu raqam ko'rinadi va log'da ham chiqadi.
-BOT_VERSION = "2.1 (menyu tugmalari)"
+BOT_VERSION = "2.2 (menyu tugmalari)"
 
 # ==========================================================
 # 🕒 VAQT ZONASI — O'zbekiston vaqti (Asia/Tashkent)
@@ -230,7 +230,6 @@ def is_boss(user: types.User | None) -> bool:
 # ==========================================================
 # ⌨️ MENYU TUGMALARI (yozish joyidagi klaviatura)
 # ==========================================================
-BTN_MENYU = "📋 MENYU"
 BTN_KECH = "⏰ Kech qolish"
 BTN_SABAB = "✍️ Sabab"
 BTN_KETISH = "🚪 Ketish"
@@ -239,30 +238,26 @@ BTN_OYLIK = "📊 Oylik hisob"
 BTN_HISOBOT = "👁 Bugungi holat"
 BTN_DAM = "🌴 Dam olish"
 BTN_FAYL = "📎 Fayl"
-BTN_YIGISH = "🔽 Yig'ish"
 
 MENU_BUTTONS = {
-    BTN_MENYU, BTN_KECH, BTN_SABAB, BTN_KETISH, BTN_QAYTDIM,
-    BTN_OYLIK, BTN_HISOBOT, BTN_DAM, BTN_FAYL, BTN_YIGISH
+    BTN_KECH, BTN_SABAB, BTN_KETISH, BTN_QAYTDIM,
+    BTN_OYLIK, BTN_HISOBOT, BTN_DAM, BTN_FAYL
 }
 
 
-def menu_collapsed(selective: bool = True) -> ReplyKeyboardMarkup:
-    """Yig'ilgan holat — yozish joyida faqat bitta '📋 MENYU' tugmasi turadi."""
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=BTN_MENYU)]],
-        resize_keyboard=True,
-        is_persistent=True,
-        selective=selective,
-        input_field_placeholder="📋 MENYU tugmasini bosing"
-    )
-
-
-def menu_expanded(boss: bool, selective: bool = True) -> ReplyKeyboardMarkup:
+def main_menu(boss: bool, selective: bool = True) -> ReplyKeyboardMarkup:
     """
-    Ochilgan holat — '📋 MENYU' bosilganda chiqadi.
-    selective=True — klaviatura faqat so'ragan odamga ko'rinadi
-    (guruhdagi qolgan xodimlarga xalaqit bermaydi).
+    Yozish joyi ostidagi menyu klaviaturasi.
+
+    "Menyuni yopish" tugmasi OLIB TASHLANDI: Telegram'da klaviatura tugmasi
+    bosilsa, u majburan chatga matn yuboradi — ya'ni yopish tugmasi har safar
+    guruhga keraksiz xabar tashlardi.
+
+    is_persistent=False — shu sozlama tufayli Telegram yozish joyida o'zining
+    ⊞ tugmasini ko'rsatadi. Xodim shu tugma orqali klaviaturani hech qanday
+    xabar yubormasdan yashiradi va qaytadan ochadi.
+
+    selective=True — klaviatura faqat so'ragan odamga ko'rinadi.
     """
     rows = [
         [KeyboardButton(text=BTN_KECH), KeyboardButton(text=BTN_SABAB)],
@@ -272,12 +267,11 @@ def menu_expanded(boss: bool, selective: bool = True) -> ReplyKeyboardMarkup:
     if boss:
         rows.append([KeyboardButton(text=BTN_HISOBOT), KeyboardButton(text=BTN_DAM)])
         rows.append([KeyboardButton(text=BTN_FAYL)])
-    rows.append([KeyboardButton(text=BTN_YIGISH)])
 
     return ReplyKeyboardMarkup(
         keyboard=rows,
         resize_keyboard=True,
-        is_persistent=True,
+        is_persistent=False,
         selective=selective,
         input_field_placeholder="Kerakli bo'limni tanlang..."
     )
@@ -711,10 +705,9 @@ async def cmd_id(message: types.Message):
     )
 
 
-async def show_menu(message: types.Message, greeting: str, expanded: bool = True):
+async def show_menu(message: types.Message, greeting: str):
     selective = message.chat.type != "private"
-    kb = (menu_expanded(is_boss(message.from_user), selective=selective)
-          if expanded else menu_collapsed(selective=selective))
+    kb = main_menu(is_boss(message.from_user), selective=selective)
     # selective klaviatura ishlashi uchun xabar REPLY bo'lishi shart
     try:
         await message.reply(greeting, reply_markup=kb)
@@ -729,11 +722,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
         message,
         f"Assalomu alaykum! 'Ziynat' do'koni nazorat boti.\n"
         f"<i>Versiya: {BOT_VERSION}</i>\n\n"
-        "⌨️ Pastda <b>📋 MENYU</b> tugmasi paydo bo'ldi — uni bosing, "
-        "qolgan tugmalar ochiladi.\n\n"
-        "<i>Agar tugma ko'rinmasa — yozish joyining o'ng tomonidagi "
-        "⌨️ belgisini bosing.</i>",
-        expanded=False
+        "⌨️ Pastdagi tugmalar orqali ishlating.\n"
+        "<i>Tugmalarni vaqtincha yashirish uchun yozish joyidagi ⊞ belgisini "
+        "bosing — qaytarish uchun yana o'sha tugmani bosasiz.</i>"
     )
 
 
@@ -1191,28 +1182,13 @@ async def handle_menu_buttons(message: types.Message, state: FSMContext):
     text = message.text
     await state.clear()
 
-    # Menyuni ochish / yig'ish — guruh mavzusi keraksiz xabarlar bilan
-    # to'lib ketmasligi uchun bosilgan tugma xabari o'chiriladi.
-    if text in (BTN_MENYU, BTN_YIGISH):
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        selective = message.chat.type != "private"
-        if text == BTN_MENYU:
-            kb = menu_expanded(is_boss(message.from_user), selective=selective)
-            note = "⌨️ <b>Menyu ochildi</b> — kerakli bo'limni tanlang."
-        else:
-            kb = menu_collapsed(selective=selective)
-            note = "🔽 <b>Menyu yig'ildi.</b> Qayta ochish uchun 📋 MENYU tugmasini bosing."
-        try:
-            await bot.send_message(
-                message.chat.id, note, reply_markup=kb,
-                message_thread_id=message.message_thread_id
-            )
-        except TelegramBadRequest:
-            await bot.send_message(message.chat.id, note, reply_markup=kb)
-        return
+    # Telegram klaviatura tugmasi bosilganda uning matnini chatga yuboradi.
+    # Guruh mavzusi keraksiz "🚪 Ketish" kabi xabarlar bilan to'lib
+    # ketmasligi uchun o'sha xabarni darhol o'chiramiz (bot admin bo'lishi kerak).
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
     if text == BTN_KECH:
         await do_kech_qolish(message, state)
