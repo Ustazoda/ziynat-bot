@@ -522,7 +522,8 @@
         "late": 0,
         "fine": 0,
         "status": "on_time",
-        "left_at": "10:47"
+        "left_at": "10:47",
+        "returned_at": "10:47"
       },
       "abdullayev1200": {
         "name": "Ma'murxon",
