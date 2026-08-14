@@ -564,6 +564,16 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
+      },
+      "murodjanovnaa_02": {
+        "name": "Mubina",
+        "fine": 120000,
+        "status": "absent"
       }
     }
   },
