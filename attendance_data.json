@@ -550,6 +550,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "ustazoda0125": {
+        "name": "Asadbek",
+        "time": "07:55",
+        "late": 0,
+        "fine": 0,
+        "status": "on_time"
       }
     }
   },
