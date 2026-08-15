@@ -622,6 +622,16 @@
       "reason": "Assalomu alaykum Qarindoshlarimnikiga yuk olib borishim kerak shunga kech qolaman.",
       "until_time": "09:00",
       "status": "pending"
+    },
+    "late_1786758658_a32f": {
+      "req_type": "late",
+      "emp_key": "ustazoda0125",
+      "emp_name": "Asadbek",
+      "username": "Ustazoda0125",
+      "reason": "Assalomu alaykum Bugun bozorga chiqib bozorlik qilib kelishim kerak. Shuning uchun soat 9:00 gacha ruhsat bera olasizmi",
+      "until_time": "09:00",
+      "work_date": "2026-08-15",
+      "status": "pending"
     }
   },
   "day_off_dates": []
