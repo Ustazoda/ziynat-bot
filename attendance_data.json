@@ -665,6 +665,16 @@
       "until_time": "09:00",
       "work_date": "2026-08-15",
       "status": "pending"
+    },
+    "late_1786847647_1f01": {
+      "req_type": "late",
+      "emp_key": "ustazoda0125",
+      "emp_name": "Asadbek",
+      "username": "Ustazoda0125",
+      "reason": "Assalomu alaykum Bugun qarindoshimnikiga borib kelganim uchun kechga qolaman",
+      "until_time": "09:00",
+      "work_date": "2026-08-16",
+      "status": "pending"
     }
   },
   "day_off_dates": []
