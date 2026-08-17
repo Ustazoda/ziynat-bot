@@ -647,6 +647,13 @@
         "until_time": "09:30",
         "boss": "abdullayev",
         "reason": "Assalomu alaykum Bugun qarindoshimnikiga borib kelganim kerak edi shunga kech qolaman"
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "time": "07:33",
+        "late": 33,
+        "fine": 40000,
+        "status": "late"
       }
     }
   },
