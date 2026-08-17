@@ -671,6 +671,11 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "murodjanovnaa_02": {
+        "name": "Mubina",
+        "fine": 120000,
+        "status": "absent"
       }
     }
   },
