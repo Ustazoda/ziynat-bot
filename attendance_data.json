@@ -639,6 +639,15 @@
         "fine": 120000,
         "status": "absent"
       }
+    },
+    "2026-08-17": {
+      "ustazoda0125": {
+        "name": "Asadbek",
+        "status": "late_approved",
+        "until_time": "09:30",
+        "boss": "abdullayev",
+        "reason": "Assalomu alaykum Bugun qarindoshimnikiga borib kelganim kerak edi shunga kech qolaman"
+      }
     }
   },
   "requests": {
@@ -715,7 +724,8 @@
       "reason": "Assalomu alaykum Bugun qarindoshimnikiga borib kelganim kerak edi shunga kech qolaman",
       "until_time": "09:30",
       "work_date": "2026-08-17",
-      "status": "pending"
+      "status": "approved",
+      "boss": "abdullayev"
     }
   },
   "day_off_dates": []
