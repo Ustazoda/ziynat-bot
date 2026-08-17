@@ -706,6 +706,16 @@
       "until_time": "09:00",
       "work_date": "2026-08-16",
       "status": "pending"
+    },
+    "late_1786930485_a6a5": {
+      "req_type": "late",
+      "emp_key": "ustazoda0125",
+      "emp_name": "Asadbek",
+      "username": "Ustazoda0125",
+      "reason": "Assalomu alaykum Bugun qarindoshimnikiga borib kelganim kerak edi shunga kech qolaman",
+      "until_time": "09:30",
+      "work_date": "2026-08-17",
+      "status": "pending"
     }
   },
   "day_off_dates": []
