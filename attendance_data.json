@@ -643,10 +643,13 @@
     "2026-08-17": {
       "ustazoda0125": {
         "name": "Asadbek",
-        "status": "late_approved",
+        "status": "on_time_approved",
         "until_time": "09:30",
         "boss": "abdullayev",
-        "reason": "Assalomu alaykum Bugun qarindoshimnikiga borib kelganim kerak edi shunga kech qolaman"
+        "reason": "Assalomu alaykum Bugun qarindoshimnikiga borib kelganim kerak edi shunga kech qolaman",
+        "time": "08:40",
+        "late": 0,
+        "fine": 0
       },
       "muhammad201207": {
         "name": "Muhammadsodiq",
