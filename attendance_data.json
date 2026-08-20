@@ -823,6 +823,16 @@
       "work_date": "2026-08-17",
       "status": "approved",
       "boss": "abdullayev"
+    },
+    "late_1787191474_90e0": {
+      "req_type": "late",
+      "emp_key": "ustazoda0125",
+      "emp_name": "Asadbek",
+      "username": "Ustazoda0125",
+      "reason": "Assalomu alaykum Bugun kech uygʻonibman shunga biroz kech qolaman",
+      "until_time": "08:30",
+      "work_date": "2026-08-20",
+      "status": "pending"
     }
   },
   "day_off_dates": []
