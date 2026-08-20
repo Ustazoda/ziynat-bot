@@ -760,6 +760,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "time": "07:58",
+        "late": 58,
+        "fine": 40000,
+        "status": "late"
       }
     }
   },
