@@ -788,6 +788,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "ustazoda0125": {
+        "name": "Asadbek",
+        "status": "late_approved",
+        "until_time": "08:30",
+        "boss": "Abduvali",
+        "reason": "Assalomu alaykum Bugun kech uygʻonibman shunga kech qolaman"
       }
     }
   },
@@ -886,7 +893,8 @@
       "reason": "Assalomu alaykum Bugun kech uygʻonibman shunga kech qolaman",
       "until_time": "08:30",
       "work_date": "2026-08-21",
-      "status": "pending"
+      "status": "approved",
+      "boss": "Abduvali"
     }
   },
   "day_off_dates": []
