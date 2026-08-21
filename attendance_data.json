@@ -791,10 +791,13 @@
       },
       "ustazoda0125": {
         "name": "Asadbek",
-        "status": "late_approved",
+        "status": "on_time_approved",
         "until_time": "08:30",
         "boss": "Abduvali",
-        "reason": "Assalomu alaykum Bugun kech uygʻonibman shunga kech qolaman"
+        "reason": "Assalomu alaykum Bugun kech uygʻonibman shunga kech qolaman",
+        "time": "08:22",
+        "late": 0,
+        "fine": 0
       }
     }
   },
