@@ -798,6 +798,13 @@
         "time": "08:22",
         "late": 0,
         "fine": 0
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "time": "08:22",
+        "late": 82,
+        "fine": 60000,
+        "status": "late"
       }
     }
   },
