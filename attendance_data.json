@@ -812,6 +812,11 @@
         "late": 25,
         "fine": 50000,
         "status": "late"
+      },
+      "murodjanovnaa_02": {
+        "name": "Mubina",
+        "fine": 120000,
+        "status": "absent"
       }
     }
   },
