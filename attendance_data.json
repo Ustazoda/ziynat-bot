@@ -868,6 +868,16 @@
       "until_time": "08:30",
       "work_date": "2026-08-20",
       "status": "pending"
+    },
+    "late_1787278232_5d0c": {
+      "req_type": "late",
+      "emp_key": "ustazoda0125",
+      "emp_name": "Asadbek",
+      "username": "Ustazoda0125",
+      "reason": "Assalomu alaykum Bugun kech uygʻonibman shunga kech qolaman",
+      "until_time": "08:30",
+      "work_date": "2026-08-21",
+      "status": "pending"
     }
   },
   "day_off_dates": []
