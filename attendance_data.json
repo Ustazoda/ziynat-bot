@@ -895,6 +895,21 @@
         "late": 16,
         "fine": 50000,
         "status": "late"
+      },
+      "ustazoda0125": {
+        "name": "Asadbek",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
+      },
+      "murodjanovnaa_02": {
+        "name": "Mubina",
+        "fine": 120000,
+        "status": "absent"
       }
     }
   },
