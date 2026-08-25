@@ -155,7 +155,7 @@ EMPLOYEES = {
         "leave_time": "18:00",
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
         "absent": 120000,
-        "active": True
+        "active": False
     },
     "muhammad201207": {
         "name": "Muhammadsodiq",
@@ -167,39 +167,6 @@ EMPLOYEES = {
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
         "absent": 100000,
         "active": True
-    },
-    "murodjanovnaa_02": {
-        "name": "Mubina",
-        "aliases": ["murodjanovnaa_02", "muradjanovnaa_02", "mubina"],
-        "ids": [],
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "18:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-        "active": True
-    },
-    "wsev7": {
-        "name": "Gulzoda",
-        "aliases": ["wsev7", "gulzoda"],
-        "ids": [],
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "19:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-        "active": False
-    },
-    "muradjanvnam": {
-        "name": "Moxinur",
-        "aliases": ["muradjanvnam", "moxinur"],
-        "ids": [],
-        "work_start": (8, 0),
-        "work_end": (12, 30),
-        "leave_time": "19:00",
-        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
-        "absent": 120000,
-        "active": False
     }
 }
 
