@@ -951,6 +951,15 @@
         "fine": 100000,
         "status": "absent"
       }
+    },
+    "2026-08-27": {
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "time": "08:34",
+        "late": 14,
+        "fine": 50000,
+        "status": "late"
+      }
     }
   },
   "requests": {
