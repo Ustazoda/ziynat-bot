@@ -1035,6 +1035,15 @@
         "fine": 30000,
         "status": "late"
       }
+    },
+    "2026-08-31": {
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "time": "07:37",
+        "late": 37,
+        "fine": 40000,
+        "status": "late"
+      }
     }
   },
   "requests": {
