@@ -1058,6 +1058,15 @@
         "fine": 0,
         "status": "on_time"
       }
+    },
+    "2026-09-01": {
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "time": "06:02",
+        "late": 0,
+        "fine": 0,
+        "status": "on_time"
+      }
     }
   },
   "requests": {
