@@ -1073,6 +1073,11 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "fine": 150000,
+        "status": "absent"
       }
     }
   },
