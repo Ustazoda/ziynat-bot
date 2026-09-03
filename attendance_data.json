@@ -1096,6 +1096,23 @@
         "fine": 100000,
         "status": "absent"
       }
+    },
+    "2026-09-03": {
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "fine": 150000,
+        "status": "absent"
+      },
+      "ganiboyevozodbek": {
+        "name": "Ozodbek",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
+      }
     }
   },
   "requests": {
