@@ -1238,6 +1238,11 @@
         "late": 19,
         "fine": 50000,
         "status": "late"
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
       }
     }
   },
