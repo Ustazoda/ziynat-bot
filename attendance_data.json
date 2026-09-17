@@ -1366,6 +1366,16 @@
         "late": 143,
         "fine": 150000,
         "status": "late"
+      },
+      "ganiboyevozodbek": {
+        "name": "Ozodbek",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
       }
     }
   },
