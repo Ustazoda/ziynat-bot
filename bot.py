@@ -168,7 +168,17 @@ EMPLOYEES = {
         "absent": 120000,
         "active": True
     },
-    
+    "Sarvinoz": {
+        "name": "Sarvinoz",
+        "aliases": ["Sarvinoz", "sarvinoz", "Sarvinozxon"],
+        "ids": [],
+        "work_start": (8, 0),
+        "work_end": (12, 30),
+        "leave_time": "21:00",
+        "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
+        "absent": 120000,
+        "active": True
+    },
     "muhammad201207": {
         "name": "Muhammadsodiq",
         "aliases": ["muhammad201207", "umarov777777777", "muhammadsodiq"],
