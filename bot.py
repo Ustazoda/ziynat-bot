@@ -168,9 +168,9 @@ EMPLOYEES = {
         "absent": 120000,
         "active": True
     },
-    "Sarvinoz": {
+    "Сарвиноз": {
         "name": "Sarvinoz",
-        "aliases": ["Sarvinoz", "sarvinoz", "Sarvinozxon"],
+        "aliases": ["Сарвиноз", "sarvinoz"],
         "ids": [],
         "work_start": (8, 0),
         "work_end": (12, 30),
