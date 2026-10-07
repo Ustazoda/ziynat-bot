@@ -1756,10 +1756,6 @@
         "late": 40,
         "fine": 40000,
         "status": "late"
-      },
-      "ustazoda0125": {
-        "name": "Asadbek",
-        "returned_at": "09:06"
       }
     }
   },
