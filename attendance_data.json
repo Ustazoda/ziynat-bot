@@ -1756,6 +1756,20 @@
         "late": 40,
         "fine": 40000,
         "status": "late"
+      },
+      "ustazoda0125": {
+        "name": "Asadbek",
+        "returned_at": "09:06"
+      },
+      "Sarvinoz": {
+        "name": "Sarvinoz",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
       }
     }
   },
