@@ -1800,6 +1800,13 @@
         "late": 4,
         "fine": 15000,
         "status": "late"
+      },
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "time": "08:52",
+        "late": 32,
+        "fine": 70000,
+        "status": "late"
       }
     }
   },
