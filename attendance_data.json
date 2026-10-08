@@ -1793,6 +1793,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "xodim": {
+        "name": "Сарвиноз",
+        "time": "08:04",
+        "late": 4,
+        "fine": 15000,
+        "status": "late"
       }
     }
   },
