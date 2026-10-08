@@ -1807,6 +1807,16 @@
         "late": 32,
         "fine": 70000,
         "status": "late"
+      },
+      "Сарвиноз": {
+        "name": "Sarvinoz",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "muhammad201207": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
       }
     }
   },
