@@ -1893,6 +1893,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "umarovovv": {
+        "name": "Umarov_muxamad",
+        "time": "08:06",
+        "late": 6,
+        "fine": 15000,
+        "status": "late"
       }
     }
   },
