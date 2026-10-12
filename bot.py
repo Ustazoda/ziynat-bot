@@ -179,11 +179,11 @@ EMPLOYEES = {
         "absent": 120000,
         "active": True
     },
-    "muhammad201207": {
+    "@Umarovovv": {
         "name": "Muhammadsodiq",
-        "aliases": ["muhammad201207", "umarov777777777", "muhammadsodiq"],
+        "aliases": ["muhammad201207", "Umarov_muhammad", "Umarovovv"],
         "ids": [],
-        "work_start": (7, 0),
+        "work_start": (7, 30),
         "work_end": (12, 30),
         "leave_time": "21:00",
         "rates": [(10, 15000), (30, 30000), (60, 40000), (120, 60000), (270, 80000)],
