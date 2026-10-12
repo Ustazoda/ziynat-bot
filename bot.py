@@ -128,7 +128,7 @@ EMPLOYEES = {
         "name": "Ma'murxon",
         "aliases": ["abdullayev1200", "abdullayev_12_00", "abdullayev", "mamurxon", "ma'murxon"],
         "ids": [],
-        "work_start": (8, 20),
+        "work_start": (8, 30),
         "work_end": (12, 30),
         "leave_time": "20:30",
         "rates": [(10, 30000), (30, 50000), (60, 70000), (120, 100000), (270, 150000)],
