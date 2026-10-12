@@ -1937,15 +1937,6 @@
     }
   },
   "requests": {
-    "late_1786413804": {
-      "req_type": "late",
-      "emp_key": "ustazoda0125",
-      "emp_name": "Asadbek",
-      "username": "Ustazoda0125",
-      "reason": "Assalomu alaykum Qarindoshlarimnikiga yuk olib borishim kerak shunga kech qolaman.",
-      "until_time": "09:00",
-      "status": "pending"
-    },
     "late_1786758658_a32f": {
       "req_type": "late",
       "emp_key": "ustazoda0125",
