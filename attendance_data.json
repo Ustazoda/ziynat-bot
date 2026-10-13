@@ -278,6 +278,15 @@
         "fine": 100000,
         "status": "absent"
       }
+    },
+    "2026-10-13": {
+      "xodim": {
+        "name": "Сарвиноз",
+        "time": "08:36",
+        "late": 36,
+        "fine": 40000,
+        "status": "late"
+      }
     }
   },
   "requests": {},
