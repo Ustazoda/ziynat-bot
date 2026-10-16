@@ -388,6 +388,33 @@
         "fine": 100000,
         "status": "absent"
       }
+    },
+    "2026-10-16": {
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "fine": 150000,
+        "status": "absent"
+      },
+      "ganiboyevozodbek": {
+        "name": "Ozodbek",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "@ergashbayeva_marjona": {
+        "name": "Marjona",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "Сарвиноз": {
+        "name": "Sarvinoz",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "@Umarovovv": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
+      }
     }
   },
   "requests": {},
