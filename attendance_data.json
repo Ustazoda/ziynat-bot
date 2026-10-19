@@ -502,6 +502,21 @@
         "late": 24,
         "fine": 50000,
         "status": "late"
+      },
+      "ganiboyevozodbek": {
+        "name": "Ozodbek",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "Сарвиноз": {
+        "name": "Sarvinoz",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "@Umarovovv": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
       }
     }
   },
