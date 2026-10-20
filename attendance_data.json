@@ -533,6 +533,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "@Umarovovv": {
+        "name": "Muhammadsodiq",
+        "time": "08:07",
+        "late": 37,
+        "fine": 40000,
+        "status": "late"
       }
     }
   },
