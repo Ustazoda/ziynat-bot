@@ -660,6 +660,13 @@
         "late": 0,
         "fine": 0,
         "status": "on_time"
+      },
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "time": "07:50",
+        "late": 0,
+        "fine": 0,
+        "status": "on_time"
       }
     }
   },
