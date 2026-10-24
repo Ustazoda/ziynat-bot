@@ -674,6 +674,16 @@
         "late": 2,
         "fine": 15000,
         "status": "late"
+      },
+      "Сарвиноз": {
+        "name": "Sarvinoz",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "@Umarovovv": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
       }
     }
   },
