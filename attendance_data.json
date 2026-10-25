@@ -693,6 +693,13 @@
         "late": 2,
         "fine": 15000,
         "status": "late"
+      },
+      "@ergashbayeva_marjona": {
+        "name": "Marjona",
+        "time": "08:06",
+        "late": 6,
+        "fine": 15000,
+        "status": "late"
       }
     }
   },
