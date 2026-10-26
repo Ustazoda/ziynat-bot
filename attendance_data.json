@@ -731,6 +731,13 @@
         "late": 22,
         "fine": 30000,
         "status": "late"
+      },
+      "xodim": {
+        "name": "Сарвиноз",
+        "time": "08:25",
+        "late": 25,
+        "fine": 30000,
+        "status": "late"
       }
     }
   },
