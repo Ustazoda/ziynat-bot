@@ -716,6 +716,15 @@
         "fine": 100000,
         "status": "absent"
       }
+    },
+    "2026-10-26": {
+      "@ergashbayeva_marjona": {
+        "name": "Marjona",
+        "time": "07:51",
+        "late": 0,
+        "fine": 0,
+        "status": "on_time"
+      }
     }
   },
   "requests": {},
