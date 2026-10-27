@@ -776,6 +776,21 @@
         "late": 28,
         "fine": 30000,
         "status": "late"
+      },
+      "abdullayev1200": {
+        "name": "Ma'murxon",
+        "fine": 150000,
+        "status": "absent"
+      },
+      "Сарвиноз": {
+        "name": "Sarvinoz",
+        "fine": 120000,
+        "status": "absent"
+      },
+      "@Umarovovv": {
+        "name": "Muhammadsodiq",
+        "fine": 100000,
+        "status": "absent"
       }
     }
   },
