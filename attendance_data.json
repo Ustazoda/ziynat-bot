@@ -754,6 +754,15 @@
         "fine": 100000,
         "status": "absent"
       }
+    },
+    "2026-10-27": {
+      "@ergashbayeva_marjona": {
+        "name": "Marjona",
+        "time": "08:01",
+        "late": 1,
+        "fine": 15000,
+        "status": "late"
+      }
     }
   },
   "requests": {},
