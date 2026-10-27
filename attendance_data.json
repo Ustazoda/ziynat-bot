@@ -769,6 +769,13 @@
         "late": 18,
         "fine": 30000,
         "status": "late"
+      },
+      "ganiboyevozodbek": {
+        "name": "Ozodbek",
+        "time": "08:28",
+        "late": 28,
+        "fine": 30000,
+        "status": "late"
       }
     }
   },
