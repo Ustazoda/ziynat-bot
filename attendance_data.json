@@ -792,6 +792,15 @@
         "fine": 100000,
         "status": "absent"
       }
+    },
+    "2026-10-28": {
+      "ganiboyevozodbek": {
+        "name": "Ozodbek",
+        "time": "08:03",
+        "late": 3,
+        "fine": 15000,
+        "status": "late"
+      }
     }
   },
   "requests": {},
